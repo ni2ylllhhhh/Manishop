@@ -459,7 +459,8 @@ export async function loginOrRegisterUser(
 
         const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
         if (token) {
-          sendTelegramBotMessage(token, parentUser.telegramId, "আপনার মাধ্যমে একটা নতুন ইউজার জয়েন হয়েছে।");
+          const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>সদস্য:</b> ${telegramUser.first_name || 'User'} ${telegramUser.last_name || ''}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
+          sendTelegramBotMessage(token, parentUser.telegramId, referrerText);
         }
       }
 
@@ -546,14 +547,11 @@ export async function loginOrRegisterUser(
         createdAt: now
       });
 
-      // Send join notification to referrer bot chat
+      // Send join notification with referral counter to referrer bot chat
       const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
       if (token) {
-        sendTelegramBotMessage(
-          token,
-          parentUser.telegramId,
-          "আপনার মাধ্যমে একটা নতুন ইউজার জয়েন হয়েছে।"
-        );
+        const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${telegramUser.first_name || 'User'} ${telegramUser.last_name || ''}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
+        sendTelegramBotMessage(token, parentUser.telegramId, referrerText);
       }
 
       // Credit grandparent (Level 2)
@@ -572,17 +570,22 @@ export async function loginOrRegisterUser(
           bonus: db.config.level2Bonus,
           createdAt: now
         });
+
+        if (token) {
+          sendTelegramBotMessage(
+            token,
+            grandParent.telegramId,
+            `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$${db.config.level2Bonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`
+          );
+        }
       }
     }
 
     // Send Welcome message to the new user in bot
     const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
     if (token) {
-      sendTelegramBotMessage(
-        token,
-        tid,
-        `স্বাগতম ${db.config.appName} এ! প্রতিদিন অ্যাড ও টাস্ক সম্পন্ন করে সরাসরি USDT ইনকাম করুন।`
-      );
+      const welcomeMsg = `🎉 <b>স্বাগতম ${telegramUser.first_name || 'ইউজার'}!</b>\n\nআপনার একাউন্ট সফলভাবে সক্রিয় হয়েছে <b>${db.config.appName}</b> এ!\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি USDT/টাকা আয় করুন।\n💰 নূন্যতম উইথড্র: $${db.config.minWithdraw} (bKash, Nagad, Binance)`;
+      sendTelegramBotMessage(token, tid, welcomeMsg);
     }
 
     db.users[tid] = newUser;
