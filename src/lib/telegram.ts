@@ -213,15 +213,17 @@ export function getTelegramWebApp(): TelegramWebApp | null {
 }
 
 export async function initTelegramWebApp(): Promise<TelegramWebApp | null> {
-  if (!getTelegramWebApp()) {
+  let tg = getTelegramWebApp();
+  if (!tg) {
     try {
-      await loadScript(TELEGRAM_SDK_URL);
+      const timeout = new Promise<null>((r) => setTimeout(() => r(null), 800));
+      await Promise.race([loadScript(TELEGRAM_SDK_URL), timeout]);
+      tg = getTelegramWebApp();
     } catch {
       return null;
     }
   }
 
-  const tg = getTelegramWebApp();
   if (!tg) return null;
 
   patchTelegramCloudStorage(tg);
@@ -229,8 +231,8 @@ export async function initTelegramWebApp(): Promise<TelegramWebApp | null> {
   try {
     tg.ready();
     tg.expand();
-    tg.setHeaderColor?.("#FDFBF6");
-    tg.setBackgroundColor?.("#FDFBF6");
+    tg.setHeaderColor?.("#0f1318");
+    tg.setBackgroundColor?.("#0f1318");
     tg.disableVerticalSwipes?.();
   } catch {
     // Ignore minor SDK initialization quirks

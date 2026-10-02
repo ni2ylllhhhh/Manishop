@@ -368,11 +368,17 @@ export async function loginOrRegisterUser(
   let parentToSync: User | null = null;
   let refToSync: Referral | null = null;
 
-  // Check remote Firebase Firestore first if exists
+  // Check if we already have the user cached locally in appStore
+  const localExisting = appStore.get().users[tid];
+
+  // If local user does NOT exist, check remote Firebase with a fast 1-second timeout (never hang)
   let remoteUser: User | null = null;
-  try {
-    remoteUser = await fetchUserFromFirebase(tid);
-  } catch {}
+  if (!localExisting) {
+    try {
+      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+      remoteUser = await Promise.race([fetchUserFromFirebase(tid), timeoutPromise]);
+    } catch {}
+  }
 
   appStore.update((db) => {
     let existing = db.users[tid];

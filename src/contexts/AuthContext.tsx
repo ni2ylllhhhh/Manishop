@@ -50,10 +50,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const db = useAppStore();
   const config = db.config;
 
-  const [status, setStatus] = useState<AuthContextType['status']>('idle');
+  const [status, setStatus] = useState<AuthContextType['status']>(() => {
+    try {
+      const savedTid = localStorage.getItem(STORAGE_TID);
+      if (savedTid && appStore.get().users[savedTid]) {
+        return 'ready';
+      }
+    } catch {}
+    return 'idle';
+  });
   const [statusLabel, setStatusLabel] = useState<string>('Connecting Telegram...');
   const [error, setError] = useState<string | null>(null);
-  const [sessionTid, setSessionTid] = useState<string | null>(() => localStorage.getItem(STORAGE_TID));
+  const [sessionTid, setSessionTid] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_TID);
+    } catch {
+      return null;
+    }
+  });
   const [inTelegram, setInTelegram] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(() => getPendingAction());
   const initRef = useRef(false);
@@ -63,8 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const performLogin = useCallback(async () => {
     setError(null);
-    setStatus('connecting');
-    setStatusLabel('Connecting Telegram...');
+    const hasExistingSession = !!(sessionTid && db.users[sessionTid]);
+    if (!hasExistingSession) {
+      setStatus('connecting');
+      setStatusLabel('Connecting Telegram...');
+    }
 
     const tg = await initTelegramWebApp();
     setInTelegram(!!tg);
@@ -76,9 +93,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!tg || (!initData && !tgUser)) {
       // If outside Telegram and demo login is enabled, auto-activate demo user or show friendly gate
       if (config.allowDemoLogin) {
-        setStatus('connecting');
-        setStatusLabel('Connecting session...');
-        await new Promise((r) => setTimeout(r, 400));
+        if (!hasExistingSession) {
+          setStatus('connecting');
+          setStatusLabel('Connecting session...');
+        }
         const demoId = localStorage.getItem("c2c_demo_id") || "724910385";
         localStorage.setItem("c2c_demo_id", demoId);
 
@@ -92,20 +110,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         localStorage.setItem(STORAGE_TID, demoUser.telegramId);
         setSessionTid(demoUser.telegramId);
-        setStatus('success');
-        setStatusLabel('Login Successful');
-        triggerHaptic('success');
-        setTimeout(() => setStatus('ready'), 400);
+        setStatus('ready');
         return;
       }
 
-      setStatus('error');
-      setError('Telegram session not found. Please open inside Telegram Mini App.');
+      if (!hasExistingSession) {
+        setStatus('error');
+        setError('Telegram session not found. Please open inside Telegram Mini App.');
+      }
       return;
     }
 
-    setStatus('verifying');
-    setStatusLabel('Verifying Account...');
+    if (!hasExistingSession) {
+      setStatus('verifying');
+      setStatusLabel('Verifying Account...');
+    }
 
     try {
       const userToRegister = tgUser || {
@@ -124,16 +143,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       localStorage.setItem(STORAGE_TID, user.telegramId);
       setSessionTid(user.telegramId);
-      setStatus('success');
-      setStatusLabel('Login Successful');
-      triggerHaptic('success');
-      setTimeout(() => setStatus('ready'), 500);
+      setStatus('ready');
     } catch (err) {
       console.error(err);
-      setStatus('error');
-      setError('Authentication failed. Please try again.');
+      if (!hasExistingSession) {
+        setStatus('error');
+        setError('Authentication failed. Please try again.');
+      }
     }
-  }, [config.allowDemoLogin]);
+  }, [config.allowDemoLogin, sessionTid, db.users]);
 
   useEffect(() => {
     if (!initRef.current) {
