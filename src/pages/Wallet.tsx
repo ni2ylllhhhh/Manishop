@@ -134,8 +134,14 @@ export function Wallet() {
             key={item.id}
             className="flex items-center gap-2.5 rounded-2xl bg-white p-2.5 shadow-card"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
-              <Clock className="h-4 w-4 text-gray-500" />
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 overflow-hidden shrink-0 p-1">
+              {item.method.toLowerCase().includes('bkash') ? (
+                <img src="https://i.ibb.co.com/0VQMxDL6/images.png" alt="bKash" className="h-6 w-6 object-contain" />
+              ) : item.method.toLowerCase().includes('nagad') ? (
+                <img src="https://i.ibb.co.com/MzvRGdq/images.jpg" alt="Nagad" className="h-6 w-6 object-contain" />
+              ) : (
+                <img src="https://i.ibb.co.com/pjs0BQNc/images-1.png" alt="Binance" className="h-6 w-6 object-contain" />
+              )}
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-bold text-ink">

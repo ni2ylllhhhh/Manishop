@@ -259,6 +259,15 @@ export function Admin() {
                   key={w.id}
                   className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2.5 text-[11px] border border-slate-200/60"
                 >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white p-0.5 border border-slate-200 shrink-0">
+                    {w.method.toLowerCase().includes('bkash') ? (
+                      <img src="https://i.ibb.co.com/0VQMxDL6/images.png" alt="bKash" className="h-5 w-5 object-contain" />
+                    ) : w.method.toLowerCase().includes('nagad') ? (
+                      <img src="https://i.ibb.co.com/MzvRGdq/images.jpg" alt="Nagad" className="h-5 w-5 object-contain" />
+                    ) : (
+                      <img src="https://i.ibb.co.com/pjs0BQNc/images-1.png" alt="Binance" className="h-5 w-5 object-contain" />
+                    )}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-ink">
                       ${w.amount.toFixed(2)} • {w.name} (TID: {w.telegramId})

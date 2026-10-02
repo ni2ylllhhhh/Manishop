@@ -645,7 +645,8 @@ export async function creditUserEarning(
 export async function requestWithdrawal(
   telegramId: string,
   amount: number,
-  account: string
+  account: string,
+  method: string = "bKash"
 ): Promise<{ success: boolean; reason?: string; withdrawal?: Withdrawal }> {
   let result: { success: boolean; reason?: string; withdrawal?: Withdrawal } = {
     success: false,
@@ -678,14 +679,16 @@ export async function requestWithdrawal(
     }
 
     u.balance -= amount;
-    u.binanceId = account;
+    if (method.toLowerCase().includes("binance")) {
+      u.binanceId = account;
+    }
 
     const wd: Withdrawal = {
       id: generateId("wd"),
       telegramId,
       name: `${u.firstName} ${u.lastName}`.trim(),
       amount,
-      method: "Binance (USDT BEP20)",
+      method,
       account,
       status: "pending",
       createdAt: new Date().toISOString()
