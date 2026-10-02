@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ManeiShopBD - Telegram Mini App Earnings Platform</title>
+    <meta name="description" content="ManeiShopBD - Telegram Mini App for watching ads, completing tasks, referral network rewards, and USDT Binance withdrawals." />
+    <meta property="og:title" content="ManeiShopBD - Telegram Mini App Earnings Platform" />
+    <meta property="og:description" content="ManeiShopBD - Telegram Mini App for watching ads, completing tasks, referral network rewards, and USDT Binance withdrawals." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      (function() {
+        // Suppress spurious Telegram SDK 6.0 warnings
+        var origConsoleError = console.error;
+        console.error = function() {
+          var firstArg = arguments[0];
+          if (typeof firstArg === 'string' && firstArg.indexOf('[Telegram.WebApp] CloudStorage is not supported') !== -1) {
+            return;
+          }
+          return origConsoleError.apply(console, arguments);
+        };
+
+        function patchCloudStorage() {
+          try {
+            if (!window.Telegram) window.Telegram = {};
+            var tg = window.Telegram.WebApp;
+            if (!tg) {
+              tg = window.Telegram.WebApp = {
+                initData: '',
+                version: '8.0',
+                platform: 'unknown',
+                ready: function() {},
+                expand: function() {},
+                close: function() {}
+              };
+            }
+
+            // Safely redefine version using Object.defineProperty to avoid getter TypeError
+            try {
+              Object.defineProperty(tg, 'version', {
+                get: function() { return '8.0'; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e) {}
+
+            try {
+              var origIsVersionAtLeast = tg.isVersionAtLeast;
+              Object.defineProperty(tg, 'isVersionAtLeast', {
+                value: function(ver) {
+                  if (!ver) return true;
+                  if (parseFloat(ver) <= 8.0) return true;
+                  if (typeof origIsVersionAtLeast === 'function') {
+                    try { return origIsVersionAtLeast.call(tg, ver); } catch (err) {}
+                  }
+                  return true;
+                },
+                writable: true,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e) {}
+
+            // Safe, compliant CloudStorage fallback backed by localStorage
+            var cs = tg.CloudStorage || {};
+
+            cs.setItem = function(key, value, callback) {
+              try {
+                localStorage.setItem('tg_cs_' + key, String(value));
+                if (typeof callback === 'function') setTimeout(function() { callback(null, true); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, false); }, 0);
+              }
+            };
+
+            cs.getItem = function(key, callback) {
+              try {
+                var val = localStorage.getItem('tg_cs_' + key);
+                if (typeof callback === 'function') setTimeout(function() { callback(null, val); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, null); }, 0);
+              }
+            };
+
+            cs.getItems = function(keys, callback) {
+              try {
+                var result = {};
+                if (Array.isArray(keys)) {
+                  for (var i = 0; i < keys.length; i++) {
+                    result[keys[i]] = localStorage.getItem('tg_cs_' + keys[i]);
+                  }
+                }
+                if (typeof callback === 'function') setTimeout(function() { callback(null, result); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, null); }, 0);
+              }
+            };
+
+            cs.removeItem = function(key, callback) {
+              try {
+                localStorage.removeItem('tg_cs_' + key);
+                if (typeof callback === 'function') setTimeout(function() { callback(null, true); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, false); }, 0);
+              }
+            };
+
+            cs.removeItems = function(keys, callback) {
+              try {
+                if (Array.isArray(keys)) {
+                  for (var i = 0; i < keys.length; i++) {
+                    localStorage.removeItem('tg_cs_' + keys[i]);
+                  }
+                }
+                if (typeof callback === 'function') setTimeout(function() { callback(null, true); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, false); }, 0);
+              }
+            };
+
+            cs.getKeys = function(callback) {
+              try {
+                var list = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                  var k = localStorage.key(i);
+                  if (k && k.indexOf('tg_cs_') === 0) {
+                    list.push(k.substring(6));
+                  }
+                }
+                if (typeof callback === 'function') setTimeout(function() { callback(null, list); }, 0);
+              } catch(e) {
+                if (typeof callback === 'function') setTimeout(function() { callback(e, []); }, 0);
+              }
+            };
+
+            try {
+              Object.defineProperty(tg, 'CloudStorage', {
+                value: cs,
+                writable: true,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e) {
+              try { tg.CloudStorage = cs; } catch (err) {}
+            }
+          } catch (e) {}
+        }
+
+        patchCloudStorage();
+        window.addEventListener('DOMContentLoaded', patchCloudStorage);
+      })();
+    </script>
+  </head>
+  <body class="bg-[#FDFBF6] text-[#1F2430] antialiased selection:bg-[#B4813F]/20">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

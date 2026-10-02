@@ -1,0 +1,6 @@
+{
+  "name": "Click2Cash - Telegram Mini App Earnings Platform",
+  "description": "Telegram Mini App for watching ads, completing tasks, referral network rewards, USDT Binance withdrawals, and community feed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,417 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
+import type { User, AppConfig, AdSlot, Task, PendingAction } from '../types';
+import { appStore, loginOrRegisterUser, creditUserEarning, getTodayDateString } from '../lib/store';
+import { subscribeToFirebaseUser } from '../lib/firebase';
+import {
+  initTelegramWebApp,
+  getTelegramInitData,
+  getTelegramUser,
+  getReferralStartParam,
+  triggerHaptic,
+  openExternalLink,
+  getTelegramWebApp
+} from '../lib/telegram';
+
+interface AuthContextType {
+  status: 'idle' | 'connecting' | 'verifying' | 'success' | 'ready' | 'error';
+  statusLabel: string;
+  error: string | null;
+  user: User | null;
+  config: AppConfig;
+  inTelegram: boolean;
+  retry: () => void;
+  demoLogin: () => void;
+  logout: () => void;
+  startAd: (slot: AdSlot) => Promise<void>;
+  startTask: (task: Task) => Promise<void>;
+  pending: PendingAction | null;
+  adsWatchedToday: number;
+  slotCountToday: (slotId: string) => number;
+  slotCountThisHour: (slotId: string) => number;
+  totalAdsWatchedThisHour: number;
+  hourlyLimitPerSlot: number;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+const STORAGE_PENDING = "c2c_pending_session";
+const STORAGE_TID = "c2c_session_tid";
+
+export function useAppStore() {
+  return React.useSyncExternalStore(appStore.subscribe, appStore.get, appStore.get);
+}
+
+export function getCurrentHourString(): string {
+  return new Date().toISOString().slice(0, 13); // e.g. "2026-10-02T14"
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const db = useAppStore();
+  const config = db.config;
+
+  const [status, setStatus] = useState<AuthContextType['status']>('idle');
+  const [statusLabel, setStatusLabel] = useState<string>('Connecting Telegram...');
+  const [error, setError] = useState<string | null>(null);
+  const [sessionTid, setSessionTid] = useState<string | null>(() => localStorage.getItem(STORAGE_TID));
+  const [inTelegram, setInTelegram] = useState(false);
+  const [pending, setPending] = useState<PendingAction | null>(() => getPendingAction());
+  const initRef = useRef(false);
+
+  const currentUser = sessionTid ? db.users[sessionTid] ?? null : null;
+  const hourlyLimitPerSlot = config.adHourlyLimitPerSlot || 10;
+
+  const performLogin = useCallback(async () => {
+    setError(null);
+    setStatus('connecting');
+    setStatusLabel('Connecting Telegram...');
+
+    const tg = await initTelegramWebApp();
+    setInTelegram(!!tg);
+
+    const initData = getTelegramInitData();
+    const tgUser = getTelegramUser();
+    const refStartParam = getReferralStartParam();
+
+    if (!tg || (!initData && !tgUser)) {
+      // If outside Telegram and demo login is enabled, auto-activate demo user or show friendly gate
+      if (config.allowDemoLogin) {
+        setStatus('connecting');
+        setStatusLabel('Connecting session...');
+        await new Promise((r) => setTimeout(r, 400));
+        const demoId = localStorage.getItem("c2c_demo_id") || "724910385";
+        localStorage.setItem("c2c_demo_id", demoId);
+
+        const demoUser = await loginOrRegisterUser({
+          id: Number(demoId),
+          first_name: "Demo",
+          last_name: "User",
+          username: "demo_user",
+          photo_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+        }, refStartParam);
+
+        localStorage.setItem(STORAGE_TID, demoUser.telegramId);
+        setSessionTid(demoUser.telegramId);
+        setStatus('success');
+        setStatusLabel('Login Successful');
+        triggerHaptic('success');
+        setTimeout(() => setStatus('ready'), 400);
+        return;
+      }
+
+      setStatus('error');
+      setError('Telegram session not found. Please open inside Telegram Mini App.');
+      return;
+    }
+
+    setStatus('verifying');
+    setStatusLabel('Verifying Account...');
+
+    try {
+      const userToRegister = tgUser || {
+        id: 700000000 + Math.floor(Math.random() * 99999999),
+        first_name: "Telegram",
+        last_name: "User",
+        username: "tg_user"
+      };
+
+      const user = await loginOrRegisterUser(userToRegister, refStartParam);
+      if (user.banned) {
+        setStatus('error');
+        setError('Your account is banned. Contact support for assistance.');
+        return;
+      }
+
+      localStorage.setItem(STORAGE_TID, user.telegramId);
+      setSessionTid(user.telegramId);
+      setStatus('success');
+      setStatusLabel('Login Successful');
+      triggerHaptic('success');
+      setTimeout(() => setStatus('ready'), 500);
+    } catch (err) {
+      console.error(err);
+      setStatus('error');
+      setError('Authentication failed. Please try again.');
+    }
+  }, [config.allowDemoLogin]);
+
+  useEffect(() => {
+    if (!initRef.current) {
+      initRef.current = true;
+      performLogin();
+    }
+  }, [performLogin]);
+
+  // Real-time listener for remote Firebase user changes
+  useEffect(() => {
+    if (!sessionTid) return;
+    const unsubscribe = subscribeToFirebaseUser(sessionTid, (remote) => {
+      appStore.update((draft) => {
+        const u = draft.users[sessionTid];
+        if (u) {
+          if (typeof remote.balance === 'number' && remote.balance !== u.balance) {
+            u.balance = remote.balance;
+          }
+          if (typeof remote.lifetimeEarned === 'number') {
+            u.lifetimeEarned = remote.lifetimeEarned;
+          }
+          if (typeof remote.referralCount === 'number') {
+            u.referralCount = remote.referralCount;
+          }
+          if (typeof remote.referralEarned === 'number') {
+            u.referralEarned = remote.referralEarned;
+          }
+          if (typeof remote.verified === 'boolean') {
+            u.verified = remote.verified;
+          }
+          if (typeof remote.banned === 'boolean') {
+            u.banned = remote.banned;
+          }
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, [sessionTid]);
+
+  const handleDemoLogin = useCallback(async () => {
+    setStatus('verifying');
+    setStatusLabel('Verifying Account...');
+    await new Promise((r) => setTimeout(r, 400));
+    const demoId = localStorage.getItem("c2c_demo_id") || String(700000000 + Math.floor(Math.random() * 99999999));
+    localStorage.setItem("c2c_demo_id", demoId);
+    const refStartParam = getReferralStartParam();
+
+    const user = await loginOrRegisterUser({
+      id: Number(demoId),
+      first_name: "Demo",
+      last_name: "User",
+      username: "demo_user",
+      photo_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+    }, refStartParam);
+
+    localStorage.setItem(STORAGE_TID, user.telegramId);
+    setSessionTid(user.telegramId);
+    setStatus('success');
+    setStatusLabel('Login Successful');
+    setTimeout(() => setStatus('ready'), 400);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(STORAGE_TID);
+    localStorage.removeItem(STORAGE_PENDING);
+    setSessionTid(null);
+    setPending(null);
+    setStatus('error');
+    setError('Logged out. Please log in again.');
+  }, []);
+
+  const claimPendingReward = useCallback(async () => {
+    const act = getPendingAction();
+    if (!act || !sessionTid) return;
+
+    clearPendingAction();
+    setPending(null);
+
+    const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
+    if (elapsedSeconds < act.minSeconds) {
+      triggerHaptic('error');
+      toast.error('ব্যালেন্স যোগ হয়নি!', {
+        description: `নূন্যতম ${act.minSeconds} সেকেন্ড (১ মিনিট) সাইটে থাকতে হবে। আপনি ${Math.floor(elapsedSeconds)} সেকেন্ডে ফিরে এসেছেন।`
+      });
+      return;
+    }
+
+    if (elapsedSeconds > act.maxMinutes * 60) {
+      triggerHaptic('error');
+      toast.error('সেশন এক্সপায়ার হয়েছে', {
+        description: `সর্বোচ্চ ${act.maxMinutes} মিনিটের মধ্যে সম্পন্ন করতে হবে।`
+      });
+      return;
+    }
+
+    await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
+    triggerHaptic('success');
+    toast.success(`+$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
+      description: act.label
+    });
+  }, [sessionTid]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        claimPendingReward();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onVisibility);
+    claimPendingReward();
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onVisibility);
+    };
+  }, [claimPendingReward]);
+
+  const slotCountToday = useCallback(
+    (slotId: string): number => {
+      if (!sessionTid) return 0;
+      const today = getTodayDateString();
+      return db.logs.filter(
+        (log) =>
+          log.telegramId === sessionTid &&
+          log.kind === 'ad' &&
+          log.label.includes(slotId) &&
+          log.createdAt.slice(0, 10) === today
+      ).length;
+    },
+    [db.logs, sessionTid]
+  );
+
+  const slotCountThisHour = useCallback(
+    (slotId: string): number => {
+      if (!sessionTid) return 0;
+      const currentHour = getCurrentHourString();
+      return db.logs.filter(
+        (log) =>
+          log.telegramId === sessionTid &&
+          log.kind === 'ad' &&
+          log.label.includes(slotId) &&
+          log.createdAt.slice(0, 13) === currentHour
+      ).length;
+    },
+    [db.logs, sessionTid]
+  );
+
+  const totalAdsWatchedThisHour = useCallback((): number => {
+    if (!sessionTid) return 0;
+    const currentHour = getCurrentHourString();
+    return db.logs.filter(
+      (log) =>
+        log.telegramId === sessionTid &&
+        log.kind === 'ad' &&
+        log.createdAt.slice(0, 13) === currentHour
+    ).length;
+  }, [db.logs, sessionTid])();
+
+  const adsWatchedToday =
+    currentUser?.todayDate === getTodayDateString() ? currentUser.adsWatchedToday : 0;
+
+  const startAd = useCallback(
+    async (slot: AdSlot) => {
+      if (!sessionTid) return;
+      const countThisHour = slotCountThisHour(slot.id);
+      if (countThisHour >= hourlyLimitPerSlot) {
+        toast.error(`এই বক্সে এই ঘণ্টার লিমিট শেষ (${hourlyLimitPerSlot}/${hourlyLimitPerSlot})!`, {
+          description: 'পরবর্তী ঘণ্টায় আবার দেখতে পারবেন।'
+        });
+        return;
+      }
+
+      // Both buttons redirect directly to the requested worker URL without Monetag popup
+      const targetAdUrl = "https://ads.ziniyaapu7.workers.dev/";
+      const requiredSeconds = Math.max(60, config.adMinSeconds || 60);
+
+      const action: PendingAction = {
+        kind: 'ad',
+        refId: slot.id,
+        label: `${slot.title} (${slot.id})`,
+        reward: slot.reward,
+        minSeconds: requiredSeconds,
+        maxMinutes: config.adMaxMinutes,
+        startedAt: Date.now()
+      };
+
+      savePendingAction(action);
+      setPending(action);
+      triggerHaptic('medium');
+
+      toast('বিজ্ঞাপন ভিজিট শুরু হয়েছে', {
+        description: 'লিঙ্কে নূন্যতম ১ মিনিট (৬০ সেকেন্ড) থাকুন। ১ মিনিটের আগে ফিরে আসলে ব্যালেন্স যোগ হবে না।'
+      });
+
+      openExternalLink(targetAdUrl);
+    },
+    [sessionTid, config, slotCountThisHour, hourlyLimitPerSlot]
+  );
+
+  const startTask = useCallback(
+    async (task: Task) => {
+      if (!sessionTid) return;
+
+      const targetTaskUrl = task.url || "https://ads.ziniyaapu7.workers.dev/";
+
+      const action: PendingAction = {
+        kind: 'task',
+        refId: task.id,
+        label: task.title,
+        reward: task.reward,
+        minSeconds: task.minSeconds,
+        maxMinutes: task.maxMinutes,
+        startedAt: Date.now()
+      };
+
+      savePendingAction(action);
+      setPending(action);
+      triggerHaptic('medium');
+
+      toast('টাস্ক শুরু হয়েছে', {
+        description: `লিঙ্কে নূন্যতম ${task.minSeconds} সেকেন্ড থাকুন। সম্পন্ন হলে ব্যালেন্স যোগ হবে।`
+      });
+
+      openExternalLink(targetTaskUrl);
+    },
+    [sessionTid]
+  );
+
+  useEffect(() => {
+    if (status === 'ready') {
+      getTelegramWebApp()?.expand?.();
+    }
+  }, [status]);
+
+  const value: AuthContextType = {
+    status,
+    statusLabel,
+    error,
+    user: currentUser,
+    config,
+    inTelegram,
+    retry: performLogin,
+    demoLogin: handleDemoLogin,
+    logout: handleLogout,
+    startAd,
+    startTask,
+    pending,
+    adsWatchedToday,
+    slotCountToday,
+    slotCountThisHour,
+    totalAdsWatchedThisHour,
+    hourlyLimitPerSlot
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextType {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+}
+
+function getPendingAction(): PendingAction | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_PENDING);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingAction(act: PendingAction): void {
+  localStorage.setItem(STORAGE_PENDING, JSON.stringify(act));
+}
+
+function clearPendingAction(): void {
+  localStorage.removeItem(STORAGE_PENDING);
+}
