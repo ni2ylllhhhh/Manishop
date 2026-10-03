@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,21 +8,23 @@ import { openTelegramChat, triggerHaptic, checkTelegramMembership } from '../lib
 
 export function ChannelVerificationGate({ children }: { children: React.ReactNode }) {
   const { user, config } = useAuth();
-  const [checking, setChecking] = useState(false);
-  const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
-  const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
-  const [adminNotice, setAdminNotice] = useState<string | null>(null);
-
-  // Check if verified in current active session
-  const [sessionVerified, setSessionVerified] = useState<boolean>(() => {
+  
+  // Loading state during entry check
+  const [isVerifyingInitial, setIsVerifyingInitial] = useState(true);
+  const [isVerifiedState, setIsVerifiedState] = useState<boolean>(() => {
     try {
       if (!user?.telegramId) return false;
-      const ok = sessionStorage.getItem(`tg_gate_ok_${user.telegramId}`) === '1';
-      return ok && Boolean(user.verified);
+      return sessionStorage.getItem(`tg_gate_ok_${user.telegramId}`) === '1' && Boolean(user.verified);
     } catch {
       return false;
     }
   });
+
+  const [checking, setChecking] = useState(false);
+  const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
+  const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
+  const [adminNotice, setAdminNotice] = useState<string | null>(null);
+  const checkRunRef = useRef(false);
 
   const channels = config.requiredChannels && config.requiredChannels.length > 0
     ? config.requiredChannels
@@ -45,21 +47,28 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
       ];
 
-  const checkMembership = async (showToasts = true) => {
-    if (!user?.telegramId) return;
-    setChecking(true);
+  // Core verification worker
+  const performVerification = async (isManualClick = false) => {
+    if (!user?.telegramId) {
+      setIsVerifyingInitial(false);
+      return;
+    }
+
+    if (isManualClick) setChecking(true);
     setAdminNotice(null);
 
     const token = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
     if (!token) {
-      if (showToasts) toast.error("বট কনফিগারেশন অনুপস্থিত!");
-      setChecking(false);
+      if (isManualClick) toast.error("বট কনফিগারেশন পাওয়া যায়নি!");
+      if (isManualClick) setChecking(false);
+      setIsVerifyingInitial(false);
       return;
     }
 
     try {
       const nextJoined: Record<string, boolean> = {};
       const missingNames: string[] = [];
+      let allMembers = true;
 
       for (const ch of channels) {
         if (!ch.username) {
@@ -73,69 +82,111 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           if (res.ok && res.isMember) {
             nextJoined[ch.id] = true;
           } else if (res.needsBotAdmin) {
-            setAdminNotice("⚠️ টিপ: বটের ফুল মেম্বারশিপ চেকের জন্য বটকে মেইন চ্যানেলে অ্যাডমিন করুন।");
-            // If user clicked join link or previously joined, treat as joined during setup
-            if (clickedMap[ch.id] || Boolean(user.verified)) {
-              nextJoined[ch.id] = true;
-            } else {
-              nextJoined[ch.id] = false;
+            setAdminNotice("⚠️ টিপ: বটের ফুল ভেরিফিকেশনের জন্য @ManeiShopBD_Bot কে মেইন চ্যানেলে অ্যাডমিন করুন।");
+            const canPass = clickedMap[ch.id] || Boolean(user.verified);
+            nextJoined[ch.id] = canPass;
+            if (!canPass) {
+              allMembers = false;
               missingNames.push(ch.name);
             }
           } else {
             nextJoined[ch.id] = false;
+            allMembers = false;
             missingNames.push(ch.name);
           }
         } catch {
           nextJoined[ch.id] = Boolean(clickedMap[ch.id]);
+          if (!nextJoined[ch.id]) {
+            allMembers = false;
+            missingNames.push(ch.name);
+          }
         }
       }
 
       setJoinedMap(nextJoined);
-      const allJoined = channels.every((ch) => nextJoined[ch.id]);
 
-      if (allJoined) {
-        triggerHaptic("success");
-        if (showToasts) {
-          toast.success("🎉 অভিনন্দন! চ্যানেল ভেরিফিকেশন সফল হয়েছে।");
-        }
-
-        // Set session verification flag
+      if (allMembers) {
+        // User is verified!
         sessionStorage.setItem(`tg_gate_ok_${user.telegramId}`, '1');
-        setSessionVerified(true);
+        setIsVerifiedState(true);
 
-        // Update local state
         appStore.update((draft) => {
           const u = draft.users[user.telegramId];
-          if (u) {
-            u.verified = true;
-          }
+          if (u) u.verified = true;
         });
+        syncUserToFirebase({ ...user, verified: true });
 
-        // Persist verified state to Firebase RTDB
-        const updatedUser = { ...user, verified: true };
-        syncUserToFirebase(updatedUser);
+        if (isManualClick) {
+          triggerHaptic("success");
+          toast.success("🎉 অভিনন্দন! চ্যানেল ভেরিফিকেশন সফল হয়েছে।");
+        }
       } else {
-        if (showToasts) {
+        // User not in channels - show verification request popup
+        sessionStorage.removeItem(`tg_gate_ok_${user.telegramId}`);
+        setIsVerifiedState(false);
+
+        appStore.update((draft) => {
+          const u = draft.users[user.telegramId];
+          if (u) u.verified = false;
+        });
+        syncUserToFirebase({ ...user, verified: false });
+
+        if (isManualClick) {
           triggerHaptic("error");
           toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ জয়েন করেননি!`);
         }
       }
     } catch (err) {
-      console.error("Verification check error:", err);
-      if (showToasts) {
+      console.error("[Verification] Error during check:", err);
+      if (isManualClick) {
         toast.error("যাচাইকরণে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
       }
     } finally {
-      setChecking(false);
+      if (isManualClick) setChecking(false);
+      setIsVerifyingInitial(false);
     }
   };
 
-  // Initial check on mount
+  // 1. Initial verification every time user enters the website
   useEffect(() => {
-    if (!sessionVerified && config.forceChannelVerification !== false && user?.telegramId) {
-      checkMembership(false);
+    if (!user?.telegramId) {
+      setIsVerifyingInitial(false);
+      return;
     }
-  }, [user?.telegramId]);
+
+    if (config.forceChannelVerification === false) {
+      setIsVerifyingInitial(false);
+      setIsVerifiedState(true);
+      return;
+    }
+
+    setIsVerifyingInitial(true);
+    const startTime = Date.now();
+
+    performVerification(false).finally(() => {
+      const elapsed = Date.now() - startTime;
+      const minDisplayMs = 500; // brief smooth loading
+      if (elapsed < minDisplayMs) {
+        setTimeout(() => setIsVerifyingInitial(false), minDisplayMs - elapsed);
+      } else {
+        setIsVerifyingInitial(false);
+      }
+    });
+  }, [user?.telegramId, config.forceChannelVerification]);
+
+  // 2. Background re-check when user returns to tab/app (e.g. after opening Telegram)
+  useEffect(() => {
+    if (config.forceChannelVerification === false || !user?.telegramId) return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        performVerification(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [user?.telegramId, config.forceChannelVerification, channels, config.botToken]);
 
   const handleOpenChannel = (id: string, url: string) => {
     triggerHaptic("medium");
@@ -143,16 +194,47 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     openTelegramChat(url);
   };
 
-  // If forceChannelVerification is disabled by admin, allow access immediately
+  // If forceChannelVerification is disabled by admin, render immediately
   if (config.forceChannelVerification === false) {
     return <>{children}</>;
   }
 
-  // If verified in this active session AND user.verified is true, render application
-  if (sessionVerified && user?.verified) {
+  // A. LOADING STATE: Every time user enters website, show smooth loading while verifying
+  if (isVerifyingInitial) {
+    return (
+      <main className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-cream px-6 select-none">
+        {/* Futuristic Red Cyber Emblem */}
+        <div className="relative flex items-center justify-center">
+          <div className="absolute -inset-3 rounded-full bg-red-600/30 blur-lg animate-pulse" />
+          <div className="relative h-20 w-20 rounded-full border-2 border-red-500 bg-gradient-to-b from-[#180306] via-[#100203] to-black shadow-[0_0_25px_rgba(255,42,58,0.7)] flex items-center justify-center">
+            {/* Spinning Neon Ring */}
+            <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-red-500 animate-spin" />
+            <TelegramIcon className="h-9 w-9 text-red-500 drop-shadow-[0_0_8px_rgba(255,42,58,0.9)]" />
+          </div>
+        </div>
+
+        {/* Loading Header */}
+        <h2 className="mt-5 text-base font-extrabold text-ink tracking-tight">
+          চ্যানেল মেম্বারশিপ যাচাই হচ্ছে...
+        </h2>
+        <p className="mt-1 text-xs text-gray-400 font-medium">
+          {config.appName || "ManeiShopBD"} • স্বয়ংক্রিয় ভেরিফিকেশন
+        </p>
+
+        {/* Tech Progress Bar */}
+        <div className="mt-4 h-1.5 w-44 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full w-full bg-gradient-to-r from-red-500 via-rose-500 to-red-500 animate-[loading_1.2s_ease-in-out_infinite]" />
+        </div>
+      </main>
+    );
+  }
+
+  // B. IF VERIFIED: Enter website smoothly without any blocking popup
+  if (isVerifiedState) {
     return <>{children}</>;
   }
 
+  // C. IF NOT IN CHANNELS: Lock website and show mandatory Verification Request Popup!
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/90 backdrop-blur-md select-none">
       {/* Centered Futuristic Red Verification Card */}
@@ -306,7 +388,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
             <button
               type="button"
               disabled={checking}
-              onClick={() => checkMembership(true)}
+              onClick={() => performVerification(true)}
               className="relative w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 py-2.5 px-3 text-xs font-black text-white shadow-[0_4px_16px_rgba(255,42,58,0.75),inset_0_1px_2px_rgba(255,255,255,0.4)] border border-red-400 hover:brightness-110 active:scale-98 transition disabled:opacity-75"
             >
               {checking ? (
