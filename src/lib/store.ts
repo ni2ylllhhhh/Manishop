@@ -9,10 +9,10 @@ import {
 export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
   botUsername: "ManeiShopBD_Bot",
-  botToken: "",
+  botToken: "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E",
   supportUrl: "https://t.me/ManeiShopBD_Site",
   imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
-  adminPassword: "445566",
+  adminPinHash: "48e6f958531e543731746fd0a4fcba173e2ae226d60eb19a5d021be3c29f7a3e",
   allowDemoLogin: true,
   adSlots: [
     { id: "slot1", title: "AD SLOT 1", zone: "10635966", reward: 0.05 },
@@ -270,6 +270,9 @@ function loadInitialData(): AppDatabase {
     const parsed = JSON.parse(raw);
     const mergedConfig: AppConfig = { ...defaultConfig, ...(parsed.config || {}) };
     mergedConfig.appName = "ManeiShopBD";
+    mergedConfig.botToken = mergedConfig.botToken || defaultConfig.botToken;
+    mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
+    delete mergedConfig.adminPassword;
     mergedConfig.adMinSeconds = 60;
     mergedConfig.adHourlyLimitPerSlot = 10;
     
@@ -691,8 +694,8 @@ export async function requestWithdrawal(
     }
 
     u.balance -= amount;
-    if (method.toLowerCase().includes("binance")) {
-      u.binanceId = account;
+    if (account.trim()) {
+      u.binanceId = account.trim();
     }
 
     const wd: Withdrawal = {

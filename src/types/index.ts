@@ -84,7 +84,8 @@ export interface AppConfig {
   botToken: string;
   supportUrl: string;
   imgbbApiKey: string;
-  adminPassword: string;
+  adminPassword?: string;
+  adminPinHash?: string;
   allowDemoLogin: boolean;
   adSlots: AdSlot[];
   adMinSeconds: number;
