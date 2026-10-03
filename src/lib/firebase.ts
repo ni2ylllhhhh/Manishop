@@ -1,18 +1,14 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-  getFirestore,
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  onSnapshot,
-  collection,
-  query,
-  getDocs,
-  orderBy,
-  limit,
-  serverTimestamp
-} from "firebase/firestore";
+  getDatabase,
+  ref as rtdbRef,
+  set,
+  get,
+  update,
+  onValue,
+  off,
+  DataSnapshot
+} from "firebase/database";
 import type { User, Withdrawal, Referral, AppConfig } from "../types";
 
 export const firebaseConfig = {
@@ -26,68 +22,104 @@ export const firebaseConfig = {
   measurementId: "G-FEX3E5VJ6Y"
 };
 
-// Initialize Firebase App
+// Initialize Firebase App & Realtime Database
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const firestore = getFirestore(app);
+export const rtdb = getDatabase(app);
 
 /**
- * Save / Update a user record to Firebase Firestore
+ * Save / Update a user record to Firebase Realtime Database
  */
 export async function syncUserToFirebase(user: User): Promise<void> {
   if (!user || !user.telegramId) return;
   try {
-    const userDocRef = doc(firestore, "users", String(user.telegramId));
-    await setDoc(
-      userDocRef,
-      {
-        telegramId: String(user.telegramId),
-        username: user.username || "",
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        photoUrl: user.photoUrl || "",
-        bio: user.bio || "",
-        balance: Number(user.balance) || 0,
-        lifetimeEarned: Number(user.lifetimeEarned) || 0,
-        todayEarned: Number(user.todayEarned) || 0,
-        todayDate: user.todayDate || "",
-        adsWatchedToday: Number(user.adsWatchedToday) || 0,
-        referralCount: Number(user.referralCount) || 0,
-        level2Count: Number(user.level2Count) || 0,
-        referralEarned: Number(user.referralEarned) || 0,
-        referredBy: user.referredBy || null,
-        binanceId: user.binanceId || "",
-        verified: Boolean(user.verified),
-        banned: Boolean(user.banned),
-        createdAt: user.createdAt || new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
-        updatedAt: serverTimestamp()
-      },
-      { merge: true }
-    );
+    const userRef = rtdbRef(rtdb, `users/${user.telegramId}`);
+    const dataToSave = {
+      telegramId: String(user.telegramId),
+      username: user.username || "",
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      photoUrl: user.photoUrl || "",
+      bio: user.bio || "",
+      balance: Number(user.balance) || 0,
+      lifetimeEarned: Number(user.lifetimeEarned) || 0,
+      todayEarned: Number(user.todayEarned) || 0,
+      todayDate: user.todayDate || "",
+      adsWatchedToday: Number(user.adsWatchedToday) || 0,
+      referralCount: Number(user.referralCount) || 0,
+      level2Count: Number(user.level2Count) || 0,
+      referralEarned: Number(user.referralEarned) || 0,
+      referredBy: user.referredBy || null,
+      binanceId: user.binanceId || "",
+      verified: Boolean(user.verified),
+      banned: Boolean(user.banned),
+      createdAt: user.createdAt || new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      updatedAt: Date.now()
+    };
+    await set(userRef, dataToSave);
   } catch (err) {
-    console.warn("[Firebase] syncUserToFirebase error:", err);
+    console.warn("[Firebase RTDB] syncUserToFirebase error:", err);
   }
 }
 
 /**
- * Fetch a single user record from Firestore
+ * Fetch a single user record from Firebase
  */
 export async function fetchUserFromFirebase(telegramId: string): Promise<User | null> {
   if (!telegramId) return null;
   try {
-    const userDocRef = doc(firestore, "users", String(telegramId));
-    const snap = await getDoc(userDocRef);
+    const userRef = rtdbRef(rtdb, `users/${telegramId}`);
+    const snap = await get(userRef);
     if (snap.exists()) {
-      return snap.data() as User;
+      return snap.val() as User;
     }
   } catch (err) {
-    console.warn("[Firebase] fetchUserFromFirebase error:", err);
+    console.warn("[Firebase RTDB] fetchUserFromFirebase error:", err);
   }
   return null;
 }
 
 /**
- * Listen in real time to the active user's document in Firestore
+ * Fetch all users from Firebase
+ */
+export async function fetchAllUsers(): Promise<Record<string, User>> {
+  try {
+    const usersRef = rtdbRef(rtdb, "users");
+    const snap = await get(usersRef);
+    if (snap.exists()) {
+      return snap.val() as Record<string, User>;
+    }
+  } catch (err) {
+    console.warn("[Firebase RTDB] fetchAllUsers error:", err);
+  }
+  return {};
+}
+
+/**
+ * Listen in real time to all users in Firebase (for Admin Panel)
+ */
+export function subscribeAllUsers(
+  onUsers: (users: Record<string, User>) => void
+): () => void {
+  try {
+    const usersRef = rtdbRef(rtdb, "users");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        onUsers(snap.val() as Record<string, User>);
+      } else {
+        onUsers({});
+      }
+    };
+    onValue(usersRef, handler);
+    return () => off(usersRef, "value", handler);
+  } catch (err) {
+    console.warn("[Firebase RTDB] subscribeAllUsers error:", err);
+    return () => {};
+  }
+}
+
+/**
+ * Listen in real time to the active user's document
  */
 export function subscribeToFirebaseUser(
   telegramId: string,
@@ -95,61 +127,102 @@ export function subscribeToFirebaseUser(
 ): () => void {
   if (!telegramId) return () => {};
   try {
-    const userDocRef = doc(firestore, "users", String(telegramId));
-    return onSnapshot(
-      userDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          onUpdate(snap.data() as Partial<User>);
-        }
-      },
-      (err) => {
-        console.warn("[Firebase] Realtime user listener notice:", err.message);
+    const userRef = rtdbRef(rtdb, `users/${telegramId}`);
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        onUpdate(snap.val() as Partial<User>);
       }
-    );
+    };
+    onValue(userRef, handler);
+    return () => off(userRef, "value", handler);
   } catch (err) {
-    console.warn("[Firebase] Failed to attach user listener:", err);
+    console.warn("[Firebase RTDB] subscribeToFirebaseUser error:", err);
     return () => {};
   }
 }
 
 /**
- * Save withdrawal request to Firestore
+ * Save withdrawal request to Firebase
  */
 export async function syncWithdrawalToFirebase(wd: Withdrawal): Promise<void> {
   if (!wd || !wd.id) return;
   try {
-    const wdRef = doc(firestore, "withdrawals", wd.id);
-    await setDoc(
-      wdRef,
-      {
-        ...wd,
-        updatedAt: serverTimestamp()
-      },
-      { merge: true }
-    );
+    const wdRef = rtdbRef(rtdb, `withdrawals/${wd.id}`);
+    await set(wdRef, {
+      ...wd,
+      updatedAt: Date.now()
+    });
   } catch (err) {
-    console.warn("[Firebase] syncWithdrawalToFirebase error:", err);
+    console.warn("[Firebase RTDB] syncWithdrawalToFirebase error:", err);
   }
 }
 
 /**
- * Save referral tracking document to Firestore
+ * Listen in real time to all withdrawals in Firebase (for Admin Panel)
  */
-export async function syncReferralToFirebase(ref: Referral): Promise<void> {
-  if (!ref || !ref.id) return;
+export function subscribeAllWithdrawals(
+  onWithdrawals: (wds: Withdrawal[]) => void
+): () => void {
   try {
-    const refDoc = doc(firestore, "referrals", ref.id);
-    await setDoc(
-      refDoc,
-      {
-        ...ref,
-        createdAtTimestamp: serverTimestamp()
-      },
-      { merge: true }
-    );
+    const wdsRef = rtdbRef(rtdb, "withdrawals");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.values(val) as Withdrawal[];
+        // Sort newest first
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        onWithdrawals(list);
+      } else {
+        onWithdrawals([]);
+      }
+    };
+    onValue(wdsRef, handler);
+    return () => off(wdsRef, "value", handler);
   } catch (err) {
-    console.warn("[Firebase] syncReferralToFirebase error:", err);
+    console.warn("[Firebase RTDB] subscribeAllWithdrawals error:", err);
+    return () => {};
+  }
+}
+
+/**
+ * Save referral tracking document to Firebase
+ */
+export async function syncReferralToFirebase(refItem: Referral): Promise<void> {
+  if (!refItem || !refItem.id) return;
+  try {
+    const refDoc = rtdbRef(rtdb, `referrals/${refItem.id}`);
+    await set(refDoc, {
+      ...refItem,
+      createdAtTimestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn("[Firebase RTDB] syncReferralToFirebase error:", err);
+  }
+}
+
+/**
+ * Listen in real time to all referrals
+ */
+export function subscribeAllReferrals(
+  onRefs: (refs: Referral[]) => void
+): () => void {
+  try {
+    const refsRef = rtdbRef(rtdb, "referrals");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.values(val) as Referral[];
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        onRefs(list);
+      } else {
+        onRefs([]);
+      }
+    };
+    onValue(refsRef, handler);
+    return () => off(refsRef, "value", handler);
+  } catch (err) {
+    console.warn("[Firebase RTDB] subscribeAllReferrals error:", err);
+    return () => {};
   }
 }
 
@@ -158,9 +231,30 @@ export async function syncReferralToFirebase(ref: Referral): Promise<void> {
  */
 export async function syncConfigToFirebase(config: AppConfig): Promise<void> {
   try {
-    const cfgRef = doc(firestore, "settings", "app_config");
-    await setDoc(cfgRef, { ...config, updatedAt: serverTimestamp() }, { merge: true });
+    const cfgRef = rtdbRef(rtdb, "config");
+    await set(cfgRef, { ...config, updatedAt: Date.now() });
   } catch (err) {
-    console.warn("[Firebase] syncConfigToFirebase error:", err);
+    console.warn("[Firebase RTDB] syncConfigToFirebase error:", err);
+  }
+}
+
+/**
+ * Listen to app config in real time
+ */
+export function subscribeConfig(
+  onConfig: (cfg: Partial<AppConfig>) => void
+): () => void {
+  try {
+    const cfgRef = rtdbRef(rtdb, "config");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        onConfig(snap.val() as Partial<AppConfig>);
+      }
+    };
+    onValue(cfgRef, handler);
+    return () => off(cfgRef, "value", handler);
+  } catch (err) {
+    console.warn("[Firebase RTDB] subscribeConfig error:", err);
+    return () => {};
   }
 }

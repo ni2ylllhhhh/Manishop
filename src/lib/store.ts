@@ -290,6 +290,14 @@ function loadInitialData(): AppDatabase {
   }
 }
 
+export function escapeHtml(str: string): string {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export async function sendTelegramBotMessage(
   botToken: string,
   chatId: string | number,
@@ -297,7 +305,7 @@ export async function sendTelegramBotMessage(
 ): Promise<boolean> {
   if (!botToken || !chatId) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    let res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -306,7 +314,25 @@ export async function sendTelegramBotMessage(
         parse_mode: "HTML"
       })
     });
-    return res.ok;
+    let data = await res.json().catch(() => ({}));
+    if (!data.ok) {
+      console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
+      res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text.replace(/<[^>]*>/g, "")
+        })
+      });
+      data = await res.json().catch(() => ({}));
+    }
+    if (data.ok) {
+      console.log(`[Telegram Bot API] Message sent successfully to ${chatId}`);
+    } else {
+      console.warn(`[Telegram Bot API] Message delivery failed for ${chatId}:`, data);
+    }
+    return Boolean(data.ok);
   } catch (err) {
     console.warn("Failed to send telegram bot message:", err);
     return false;
@@ -370,6 +396,7 @@ export async function loginOrRegisterUser(
   let user: User;
   let parentToSync: User | null = null;
   let refToSync: Referral | null = null;
+  const messagesToSend: Array<{ chatId: string | number; text: string }> = [];
 
   // Check if we already have the user cached locally in appStore
   const localExisting = appStore.get().users[tid];
@@ -383,13 +410,27 @@ export async function loginOrRegisterUser(
     } catch {}
   }
 
+  const cleanReferrer = referredBy && String(referredBy).trim() !== tid ? String(referredBy).trim() : null;
+  let remoteParent: User | null = null;
+  if (cleanReferrer && !appStore.get().users[cleanReferrer]) {
+    try {
+      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+      remoteParent = await Promise.race([fetchUserFromFirebase(cleanReferrer), timeoutPromise]);
+    } catch {}
+  }
+
   appStore.update((db) => {
     let existing = db.users[tid];
     if (!existing && remoteUser) {
       existing = { ...remoteUser };
       db.users[tid] = existing;
     }
-    const cleanReferrer = referredBy && referredBy !== tid ? String(referredBy).trim() : null;
+
+    if (cleanReferrer && remoteParent && !db.users[cleanReferrer]) {
+      db.users[cleanReferrer] = { ...remoteParent };
+    }
+
+    const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
 
     if (existing) {
       existing.firstName = telegramUser.first_name || existing.firstName;
@@ -435,9 +476,9 @@ export async function loginOrRegisterUser(
         }
         const parentUser = db.users[cleanReferrer];
         parentUser.referralCount += 1;
-        parentUser.balance += db.config.referralBonus;
-        parentUser.lifetimeEarned += db.config.referralBonus;
-        parentUser.referralEarned += db.config.referralBonus;
+        parentUser.balance = Number((parentUser.balance + db.config.referralBonus).toFixed(2));
+        parentUser.lifetimeEarned = Number((parentUser.lifetimeEarned + db.config.referralBonus).toFixed(2));
+        parentUser.referralEarned = Number((parentUser.referralEarned + db.config.referralBonus).toFixed(2));
 
         const newRef: Referral = {
           id: generateId("ref"),
@@ -455,17 +496,13 @@ export async function loginOrRegisterUser(
           id: generateId("log"),
           telegramId: parentUser.telegramId,
           kind: "referral",
-          label: `Level 1 referral bonus (${telegramUser.first_name || 'User'})`,
+          label: `Level 1 referral bonus (${displayName})`,
           amount: db.config.referralBonus,
           createdAt: now
         });
 
-        const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
-        const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
-        if (token) {
-          const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${displayName}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
-          sendTelegramBotMessage(token, parentUser.telegramId, referrerText);
-        }
+        const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
+        messagesToSend.push({ chatId: parentUser.telegramId, text: referrerText });
       }
 
       user = existing;
@@ -526,9 +563,9 @@ export async function loginOrRegisterUser(
 
       const parentUser = db.users[cleanReferrer];
       parentUser.referralCount += 1;
-      parentUser.balance += db.config.referralBonus;
-      parentUser.lifetimeEarned += db.config.referralBonus;
-      parentUser.referralEarned += db.config.referralBonus;
+      parentUser.balance = Number((parentUser.balance + db.config.referralBonus).toFixed(2));
+      parentUser.lifetimeEarned = Number((parentUser.lifetimeEarned + db.config.referralBonus).toFixed(2));
+      parentUser.referralEarned = Number((parentUser.referralEarned + db.config.referralBonus).toFixed(2));
 
       const newRef: Referral = {
         id: generateId("ref"),
@@ -542,8 +579,6 @@ export async function loginOrRegisterUser(
       refToSync = { ...newRef };
       parentToSync = { ...parentUser };
 
-      const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
-
       db.logs.unshift({
         id: generateId("log"),
         telegramId: parentUser.telegramId,
@@ -553,20 +588,17 @@ export async function loginOrRegisterUser(
         createdAt: now
       });
 
-      // Send join notification with referral counter to referrer bot chat
-      const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
-      if (token) {
-        const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${displayName}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
-        sendTelegramBotMessage(token, parentUser.telegramId, referrerText);
-      }
+      // Prepare referrer notification
+      const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
+      messagesToSend.push({ chatId: parentUser.telegramId, text: referrerText });
 
       // Credit grandparent (Level 2)
       if (parentUser.referredBy && db.users[parentUser.referredBy]) {
         const grandParent = db.users[parentUser.referredBy];
         grandParent.level2Count += 1;
-        grandParent.balance += db.config.level2Bonus;
-        grandParent.lifetimeEarned += db.config.level2Bonus;
-        grandParent.referralEarned += db.config.level2Bonus;
+        grandParent.balance = Number((grandParent.balance + db.config.level2Bonus).toFixed(2));
+        grandParent.lifetimeEarned = Number((grandParent.lifetimeEarned + db.config.level2Bonus).toFixed(2));
+        grandParent.referralEarned = Number((grandParent.referralEarned + db.config.level2Bonus).toFixed(2));
 
         db.referrals.unshift({
           id: generateId("ref"),
@@ -577,28 +609,22 @@ export async function loginOrRegisterUser(
           createdAt: now
         });
 
-        if (token) {
-          sendTelegramBotMessage(
-            token,
-            grandParent.telegramId,
-            `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$${db.config.level2Bonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`
-          );
-        }
+        messagesToSend.push({
+          chatId: grandParent.telegramId,
+          text: `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$${db.config.level2Bonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`
+        });
       }
     }
 
-    // Send Welcome message to the new user in bot
-    const token = db.config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
-    if (token) {
-      const welcomeMsg = `🎉 <b>স্বাগতম ${telegramUser.first_name || 'ইউজার'}!</b>\n\nআপনার একাউন্ট সফলভাবে সক্রিয় হয়েছে <b>${db.config.appName}</b> এ!\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি USDT/টাকা আয় করুন।\n💰 নূন্যতম উইথড্র: $${db.config.minWithdraw} (bKash, Nagad, Binance)`;
-      sendTelegramBotMessage(token, tid, welcomeMsg);
-    }
+    // Welcome message to the new user in bot
+    const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\nআপনার একাউন্ট সফলভাবে সক্রিয় হয়েছে <b>${escapeHtml(db.config.appName)}</b> এ!\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি USDT/টাকা আয় করুন।\n💰 নূন্যতম উইথড্র: $${db.config.minWithdraw} (bKash, Nagad, Binance)\n\n🚀 কাজ শুরু করতে নিচের বোতামে চাপুন।`;
+    messagesToSend.push({ chatId: tid, text: welcomeMsg });
 
     db.users[tid] = newUser;
     user = newUser;
   });
 
-  // Sync to Firebase in background
+  // 1. Sync to Firebase in background
   if (user!) {
     syncUserToFirebase(user!);
   }
@@ -607,6 +633,20 @@ export async function loginOrRegisterUser(
   }
   if (refToSync) {
     syncReferralToFirebase(refToSync);
+  }
+
+  // 2. Dispatch all pending bot messages with proper token
+  const token = appStore.get().config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
+  if (token && messagesToSend.length > 0) {
+    (async () => {
+      for (const item of messagesToSend) {
+        try {
+          await sendTelegramBotMessage(token, item.chatId, item.text);
+        } catch (e) {
+          console.warn("[Telegram Bot] Send message loop error:", e);
+        }
+      }
+    })();
   }
 
   return user!;

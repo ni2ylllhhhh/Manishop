@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -19,13 +19,23 @@ import {
   Copy,
   ExternalLink,
   Save,
-  KeyRound
+  KeyRound,
+  RefreshCw,
+  Radio
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { useAppStore } from '../contexts/AuthContext';
 import { appStore, generateId } from '../lib/store';
 import { formatDate } from '../lib/format';
-import { syncUserToFirebase, syncWithdrawalToFirebase, syncConfigToFirebase } from '../lib/firebase';
+import {
+  syncUserToFirebase,
+  syncWithdrawalToFirebase,
+  syncConfigToFirebase,
+  subscribeAllUsers,
+  subscribeAllWithdrawals,
+  subscribeAllReferrals,
+  fetchAllUsers
+} from '../lib/firebase';
 import type { AppConfig, User, Withdrawal } from '../types';
 
 const ADMIN_TABS = [
@@ -72,6 +82,72 @@ export function Admin() {
   // Password Change State
   const [currentPinInput, setCurrentPinInput] = useState("");
   const [newPinInput, setNewPinInput] = useState("");
+
+  // Live Firebase Sync States
+  const [syncing, setSyncing] = useState(false);
+  const [liveUserCount, setLiveUserCount] = useState<number | null>(null);
+
+  // Subscribe to real-time Firebase users, withdrawals, and referrals
+  useEffect(() => {
+    if (!unlocked) return;
+
+    // Initial fetch from Firebase Realtime Database
+    fetchAllUsers().then((remoteUsers) => {
+      const keys = Object.keys(remoteUsers);
+      if (keys.length > 0) {
+        setLiveUserCount(keys.length);
+        appStore.update((d) => {
+          d.users = { ...d.users, ...remoteUsers };
+        });
+      }
+    });
+
+    // Real-time listener for users
+    const unsubUsers = subscribeAllUsers((remoteUsers) => {
+      const keys = Object.keys(remoteUsers);
+      setLiveUserCount(keys.length);
+      appStore.update((d) => {
+        d.users = { ...d.users, ...remoteUsers };
+      });
+    });
+
+    // Real-time listener for withdrawals
+    const unsubWds = subscribeAllWithdrawals((remoteWds) => {
+      appStore.update((d) => {
+        d.withdrawals = remoteWds;
+      });
+    });
+
+    // Real-time listener for referrals
+    const unsubRefs = subscribeAllReferrals((remoteRefs) => {
+      appStore.update((d) => {
+        d.referrals = remoteRefs;
+      });
+    });
+
+    return () => {
+      unsubUsers();
+      unsubWds();
+      unsubRefs();
+    };
+  }, [unlocked]);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      const remoteUsers = await fetchAllUsers();
+      const keys = Object.keys(remoteUsers);
+      setLiveUserCount(keys.length);
+      appStore.update((d) => {
+        d.users = { ...d.users, ...remoteUsers };
+      });
+      toast.success(`ফায়ারবেস থেকে ${keys.length} জন ইউজার লাইভ সিঙ্ক হয়েছে!`);
+    } catch {
+      toast.error("সিঙ্ক ব্যর্থ হয়েছে");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,11 +283,28 @@ export function Admin() {
       <Toaster position="top-center" richColors />
 
       {/* Top Admin Header */}
-      <header className="sticky top-0 z-30 flex items-center gap-2 bg-slate-900 px-4 py-3 text-white shadow-md">
+      <header className="sticky top-0 z-30 flex items-center gap-2 bg-slate-900 px-4 py-2.5 text-white shadow-md">
         <ShieldCheck className="h-5 w-5 text-brand-400" />
-        <h1 className="flex-1 text-sm font-bold">
-          {cfg.appName} • Admin Panel
-        </h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-bold truncate">
+            {cfg.appName} • Admin Panel
+          </h1>
+          <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Live Sync active {liveUserCount !== null ? `(${liveUserCount} Firebase users)` : ""}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleManualSync}
+          disabled={syncing}
+          title="Refresh from Firebase"
+          className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition disabled:opacity-50"
+        >
+          <RotateCcw className={`h-3.5 w-3.5 ${syncing ? "animate-spin text-brand-400" : ""}`} />
+          <span className="hidden sm:inline">Sync</span>
+        </button>
+
         <button
           onClick={() => {
             sessionStorage.removeItem(STORAGE_ADMIN_SESSION);
