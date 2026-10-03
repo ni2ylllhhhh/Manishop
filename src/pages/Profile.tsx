@@ -6,7 +6,8 @@ import {
   User as UserIcon,
   Send,
   Link as LinkIcon,
-  Trophy
+  Trophy,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
@@ -100,6 +101,18 @@ export function Profile() {
           <StatBox label="Balance" value={`$${user.balance.toFixed(2)}`} />
           <StatBox label="Referrals" value={String(user.referralCount)} />
           <StatBox label="Earned" value={`$${user.lifetimeEarned.toFixed(2)}`} />
+        </div>
+
+        {/* Direct Admin Panel Access */}
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => navigate('/admin')}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-2.5 px-4 text-xs font-bold text-white shadow-sm transition active:scale-98"
+          >
+            <ShieldCheck className="h-4 w-4 text-amber-400" />
+            <span>অ্যাডমিন প্যানেল (Admin Panel)</span>
+          </button>
         </div>
       </section>
     </main>
