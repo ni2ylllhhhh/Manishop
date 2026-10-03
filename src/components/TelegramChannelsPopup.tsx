@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bell } from 'lucide-react';
+import { X } from 'lucide-react';
 import { openTelegramChat, triggerHaptic } from '../lib/telegram';
-
-const STORAGE_POPUP_DISMISSED = "mshop_tg_popup_closed";
 
 export function TelegramChannelsPopup() {
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    // Show popup shortly after component mounts
+    // Show popup shortly after component loads
     const timer = setTimeout(() => {
       setIsOpen(true);
-    }, 400);
+    }, 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -28,57 +26,56 @@ export function TelegramChannelsPopup() {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      {/* Click outside to close backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-xs animate-in fade-in duration-200">
+      {/* Click outside to close */}
       <div className="absolute inset-0" onClick={handleClose} />
 
-      {/* Main Card Modal Container */}
-      <div className="relative z-10 w-full max-w-[390px] pt-11">
-        {/* Top Floating Badge Logo */}
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+      {/* Main Compact Modal Wrapper */}
+      <div className="relative z-10 w-full max-w-[320px] pt-8 select-none">
+        
+        {/* Top Centered Circular Emblem: ManeiShopBD_Bot */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
           <div className="relative flex items-center justify-center">
-            {/* Outer Red Glow */}
-            <div className="absolute -inset-1.5 rounded-full bg-red-600/40 blur-md animate-pulse"></div>
+            {/* Outer Red Fiery Glow */}
+            <div className="absolute -inset-1 rounded-full bg-red-600/60 blur-md animate-pulse" />
 
-            {/* Circular Badge Frame */}
-            <div className="relative h-20 w-20 rounded-full border-2 border-red-500 bg-gradient-to-b from-[#1b080a] via-[#100406] to-black p-1 shadow-[0_0_20px_rgba(239,68,68,0.7),inset_0_0_12px_rgba(239,68,68,0.5)] flex items-center justify-center">
-              {/* Inner Decorative Tech Ring */}
-              <div className="absolute inset-1 rounded-full border border-red-500/30 border-dashed"></div>
-
-              {/* Central Graphic (Shopping Bag with M & Cart) */}
-              <div className="flex flex-col items-center justify-center text-center">
+            {/* Emblem Circle */}
+            <div className="relative h-16 w-16 rounded-full border-2 border-[#ff2a3a] bg-gradient-to-b from-[#250508] via-[#140204] to-black p-0.5 shadow-[0_0_16px_rgba(255,42,58,0.8),inset_0_0_10px_rgba(255,42,58,0.6)] flex items-center justify-center overflow-visible">
+              
+              {/* Central Stylized Shopping Bag & Cart Graphic */}
+              <div className="relative flex flex-col items-center justify-center">
                 <svg
-                  viewBox="0 0 48 48"
-                  className="h-10 w-10 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]"
+                  viewBox="0 0 40 40"
+                  className="h-8 w-8 text-red-500 drop-shadow-[0_0_6px_rgba(255,42,58,0.9)]"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.2"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  {/* Shopping Bag Outline */}
-                  <path d="M12 16L15 40H33L36 16H12Z" fill="#2a090d" stroke="#ef4444" />
+                  {/* Shopping Bag Base */}
+                  <path d="M10 13L12.5 33H27.5L30 13H10Z" fill="#32060a" stroke="#ff2a3a" />
                   {/* Handle */}
-                  <path d="M18 16V11C18 7.68 20.68 5 24 5C27.32 5 30 7.68 30 11V16" stroke="#ef4444" />
-                  {/* 'M' Letter inside bag */}
+                  <path d="M15 13V9C15 6.5 17.2 4.5 20 4.5C22.8 4.5 25 6.5 25 9V13" stroke="#ff2a3a" />
+                  {/* Red Letter 'M' in center */}
                   <path
-                    d="M19 33V22L24 28L29 22V33"
+                    d="M15 27V18L20 23L25 18V27"
                     stroke="#ffffff"
-                    strokeWidth="2.5"
+                    strokeWidth="2.2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                  {/* Small dollar sign tag */}
-                  <circle cx="34" cy="18" r="4.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1.2" />
-                  <text x="34" y="21" fill="#ffffff" fontSize="6.5" fontWeight="bold" textAnchor="middle">
+                  {/* Dollar tag */}
+                  <circle cx="28" cy="14" r="3.5" fill="#ff2a3a" stroke="#ffffff" strokeWidth="1" />
+                  <text x="28" y="16.5" fill="#ffffff" fontSize="5" fontWeight="900" textAnchor="middle">
                     $
                   </text>
                 </svg>
               </div>
 
-              {/* ManeiShopBD_Bot Ribbon Banner */}
-              <div className="absolute -bottom-2 w-[105px] rounded bg-gradient-to-r from-red-800 via-red-600 to-red-800 py-0.5 px-1 text-center shadow-[0_2px_8px_rgba(0,0,0,0.8),0_0_8px_rgba(239,68,68,0.6)] border border-red-400">
-                <span className="block text-[8px] font-black italic tracking-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] truncate">
+              {/* ManeiShopBD_Bot Text Ribbon Overlay */}
+              <div className="absolute -bottom-2 w-[88px] rounded-full bg-gradient-to-r from-[#990011] via-[#e6001a] to-[#990011] py-0.5 px-1 text-center shadow-[0_2px_6px_rgba(0,0,0,0.9),0_0_6px_rgba(255,42,58,0.8)] border border-[#ff4d5a]">
+                <span className="block text-[7.5px] font-black italic tracking-tighter text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] truncate">
                   ManeiShopBD_Bot
                 </span>
               </div>
@@ -86,53 +83,55 @@ export function TelegramChannelsPopup() {
           </div>
         </div>
 
-        {/* Outer Sci-Fi Red Glowing Box */}
-        <div className="relative rounded-3xl border-2 border-red-600 bg-gradient-to-b from-[#160608] via-[#0d0305] to-[#080203] px-3.5 pt-10 pb-4 shadow-[0_0_35px_rgba(220,38,38,0.55),inset_0_0_25px_rgba(220,38,38,0.25)]">
-          {/* Top Corner Bevel Tech Accents */}
-          <div className="absolute top-2 left-3 h-2.5 w-2.5 border-t-2 border-l-2 border-red-400 opacity-80" />
-          <div className="absolute top-2 right-3 h-2.5 w-2.5 border-t-2 border-r-2 border-red-400 opacity-80" />
-          <div className="absolute bottom-2 left-3 h-2.5 w-2.5 border-b-2 border-l-2 border-red-400 opacity-80" />
-          <div className="absolute bottom-2 right-3 h-2.5 w-2.5 border-b-2 border-r-2 border-red-400 opacity-80" />
+        {/* Outer Cyber Box Container with Glowing Red Borders */}
+        <div className="relative rounded-2xl border-2 border-[#ff2a3a] bg-gradient-to-b from-[#180306] via-[#0d0203] to-[#080102] px-2.5 pt-8 pb-2.5 shadow-[0_0_24px_rgba(255,42,58,0.6),inset_0_0_20px_rgba(255,42,58,0.3)]">
+          
+          {/* Beveled Tech Corner Accents */}
+          <div className="absolute top-1.5 left-2 h-2 w-2 border-t-2 border-l-2 border-[#ff6677] opacity-80" />
+          <div className="absolute top-1.5 right-2 h-2 w-2 border-t-2 border-r-2 border-[#ff6677] opacity-80" />
+          <div className="absolute bottom-1.5 left-2 h-2 w-2 border-b-2 border-l-2 border-[#ff6677] opacity-80" />
+          <div className="absolute bottom-1.5 right-2 h-2 w-2 border-b-2 border-r-2 border-[#ff6677] opacity-80" />
 
           {/* Close 'X' Button */}
           <button
             onClick={handleClose}
             aria-label="Close"
-            className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-red-950/80 border border-red-500/50 text-red-300 hover:bg-red-900 hover:text-white transition active:scale-90"
+            className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 border border-red-500/60 text-red-300 hover:bg-red-950 hover:text-white transition active:scale-90"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3 w-3" />
           </button>
 
           {/* Header Title: Join Our Telegram Channels */}
-          <div className="mt-2 text-center">
-            <div className="inline-flex items-center justify-center gap-2">
+          <div className="mt-1 text-center">
+            <div className="inline-flex items-center justify-center gap-1.5">
               {/* Red Telegram Icon */}
-              <TelegramIcon className="h-6 w-6 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
-              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+              <TelegramIcon className="h-4.5 w-4.5 text-[#ff2a3a] drop-shadow-[0_0_6px_rgba(255,42,58,0.9)]" />
+              <h2 className="text-base font-black uppercase tracking-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
                 Join Our
               </h2>
             </div>
-            <p className="text-xl sm:text-2xl font-black uppercase tracking-tight text-red-500 drop-shadow-[0_0_14px_rgba(239,68,68,0.9)]">
+            <p className="text-base font-black uppercase tracking-tight text-[#ff2a3a] drop-shadow-[0_0_10px_rgba(255,42,58,0.9)] leading-tight">
               Telegram Channels
             </p>
           </div>
 
-          {/* Two Channel Cards Grid */}
-          <div className="mt-4 grid grid-cols-2 gap-2.5">
+          {/* Two Channel Cards Side-by-Side */}
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            
             {/* 1. Main Channel Card */}
-            <div className="flex flex-col items-center justify-between rounded-2xl border border-red-500/80 bg-gradient-to-b from-[#20080b] to-[#120305] p-2.5 shadow-[0_0_12px_rgba(220,38,38,0.25)] hover:border-red-400 transition">
+            <div className="flex flex-col items-center justify-between rounded-xl border border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] p-2 shadow-[0_0_8px_rgba(255,42,58,0.3)]">
               {/* Red Circular Icon with Paper Plane */}
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 shadow-[0_0_12px_rgba(239,68,68,0.7),inset_0_1px_1px_rgba(255,255,255,0.4)] border border-red-400">
-                <TelegramIcon className="h-5 w-5 text-white drop-shadow" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] shadow-[0_0_10px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566]">
+                <TelegramIcon className="h-4 w-4 text-white drop-shadow" />
               </div>
 
               {/* Title & Subtitle */}
-              <div className="mt-2 text-center">
-                <h3 className="text-xs font-black tracking-tight leading-tight">
+              <div className="mt-1.5 text-center">
+                <h3 className="text-[11px] font-black tracking-tight leading-none">
                   <span className="text-white">Main </span>
-                  <span className="text-red-500">Channel</span>
+                  <span className="text-[#ff2a3a]">Channel</span>
                 </h3>
-                <p className="mt-0.5 text-[9px] font-medium text-slate-300 leading-tight">
+                <p className="mt-1 text-[7.5px] font-medium text-slate-300 leading-tight">
                   All Videos • Updates • News
                 </p>
               </div>
@@ -141,28 +140,28 @@ export function TelegramChannelsPopup() {
               <button
                 type="button"
                 onClick={() => handleJoin("https://t.me/jgjghjghh687")}
-                className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 py-1.5 px-2 text-[10.5px] font-extrabold text-white shadow-[0_4px_10px_rgba(220,38,38,0.6),inset_0_1px_2px_rgba(255,255,255,0.4)] border border-red-400 hover:brightness-110 active:scale-95 transition"
+                className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
               >
-                <TelegramIcon className="h-3.5 w-3.5 text-white shrink-0" />
+                <TelegramIcon className="h-3 w-3 text-white shrink-0" />
                 <span className="truncate">Join Channel</span>
-                <span className="text-xs">→</span>
+                <span className="text-[10px]">→</span>
               </button>
             </div>
 
             {/* 2. Payment Proof Channel Card */}
-            <div className="flex flex-col items-center justify-between rounded-2xl border border-red-500/80 bg-gradient-to-b from-[#20080b] to-[#120305] p-2.5 shadow-[0_0_12px_rgba(220,38,38,0.25)] hover:border-red-400 transition">
+            <div className="flex flex-col items-center justify-between rounded-xl border border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] p-2 shadow-[0_0_8px_rgba(255,42,58,0.3)]">
               {/* Red Circular Icon with Paper Plane */}
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 shadow-[0_0_12px_rgba(239,68,68,0.7),inset_0_1px_1px_rgba(255,255,255,0.4)] border border-red-400">
-                <TelegramIcon className="h-5 w-5 text-white drop-shadow" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] shadow-[0_0_10px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566]">
+                <TelegramIcon className="h-4 w-4 text-white drop-shadow" />
               </div>
 
               {/* Title & Subtitle */}
-              <div className="mt-2 text-center">
-                <h3 className="text-xs font-black tracking-tight leading-tight">
+              <div className="mt-1.5 text-center">
+                <h3 className="text-[11px] font-black tracking-tight leading-none">
                   <span className="text-white">Payment </span>
-                  <span className="text-red-500">Channel</span>
+                  <span className="text-[#ff2a3a]">Channel</span>
                 </h3>
-                <p className="mt-0.5 text-[9px] font-medium text-slate-300 leading-tight">
+                <p className="mt-1 text-[7.5px] font-medium text-slate-300 leading-tight">
                   Payment • Proofs • Updates
                 </p>
               </div>
@@ -171,25 +170,32 @@ export function TelegramChannelsPopup() {
               <button
                 type="button"
                 onClick={() => handleJoin("https://t.me/Earning_Money_Lob")}
-                className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-red-500 via-red-600 to-red-800 py-1.5 px-2 text-[10.5px] font-extrabold text-white shadow-[0_4px_10px_rgba(220,38,38,0.6),inset_0_1px_2px_rgba(255,255,255,0.4)] border border-red-400 hover:brightness-110 active:scale-95 transition"
+                className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
               >
-                <TelegramIcon className="h-3.5 w-3.5 text-white shrink-0" />
+                <TelegramIcon className="h-3 w-3 text-white shrink-0" />
                 <span className="truncate">Join Channel</span>
-                <span className="text-xs">→</span>
+                <span className="text-[10px]">→</span>
               </button>
             </div>
           </div>
 
           {/* Bottom Alert / Bell Footer */}
-          <div className="mt-3.5 flex items-center justify-center gap-2 border-t border-red-900/50 pt-2.5">
-            {/* Sound waves & bell */}
-            <div className="flex items-center text-red-500">
-              <span className="text-xs font-bold text-red-500/80">((</span>
-              <Bell className="mx-1 h-3.5 w-3.5 text-red-500 fill-red-500 animate-bounce" />
-              <span className="text-xs font-bold text-red-500/80">))</span>
+          <div className="mt-2.5 flex items-center justify-center gap-1.5 border-t border-red-950/80 pt-2">
+            {/* Red Sound Waves & Bell */}
+            <div className="flex items-center text-[#ff2a3a]">
+              <span className="text-[10px] font-black text-[#ff2a3a]">((</span>
+              {/* Bell SVG */}
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="mx-0.5 h-3.5 w-3.5 text-[#ff2a3a] animate-bounce drop-shadow-[0_0_6px_rgba(255,42,58,0.9)]"
+              >
+                <path d="M12 2C10.34 2 9 3.34 9 5V5.29C6.71 6.36 5 8.78 5 11.5V17L3 19V20H21V19L19 17V11.5C19 8.78 17.29 6.36 15 5.29V5C15 3.34 13.66 2 12 2ZM10 21C10 22.1 10.9 23 12 23C13.1 23 14 22.1 14 21H10Z" />
+              </svg>
+              <span className="text-[10px] font-black text-[#ff2a3a]">))</span>
             </div>
-            <p className="text-[11px] font-bold text-slate-300 tracking-wide">
-              Don't miss any <span className="text-red-400 font-extrabold">update!</span>
+            <p className="text-[9.5px] font-bold text-slate-300 tracking-wide">
+              Don't miss any <span className="text-[#ff3b4b] font-black">update!</span>
             </p>
           </div>
         </div>
