@@ -10,7 +10,8 @@ import {
   getReferralStartParam,
   triggerHaptic,
   openExternalLink,
-  getTelegramWebApp
+  getTelegramWebApp,
+  checkTelegramMembership
 } from '../lib/telegram';
 
 interface AuthContextType {
@@ -220,26 +221,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       for (const ch of channels) {
         if (!ch.username) continue;
         try {
-          const res = await fetch(
-            `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${encodeURIComponent(ch.username)}&user_id=${encodeURIComponent(currentUser.telegramId)}`
-          );
-          const data = await res.json().catch(() => ({}));
-          if (data.ok) {
-            const st = data.result?.status;
-            // 'left' or 'kicked' means the user left/unjoined the channel
-            if (st === 'left' || st === 'kicked') {
-              console.warn(`[Surveillance] User ${currentUser.telegramId} left channel @${ch.username}! Revoking access.`);
-              appStore.update((draft) => {
-                const u = draft.users[currentUser.telegramId];
-                if (u) {
-                  u.verified = false;
-                }
-              });
-              syncUserToFirebase({ ...currentUser, verified: false });
-              triggerHaptic('error');
-              toast.error(`⚠️ আপনি '${ch.name}' চ্যানেল ত্যাগ করেছেন! ওয়েবসাইট ব্যবহার করার জন্য আবার জয়েন করে ভেরিফাই করুন।`);
-              break;
-            }
+          const res = await checkTelegramMembership(token, ch.username, currentUser.telegramId);
+          // If the bot checked and verified the user is NOT a member:
+          if (res.ok && !res.isMember) {
+            console.warn(`[Surveillance] User ${currentUser.telegramId} is not in @${ch.username}! Revoking access.`);
+            appStore.update((draft) => {
+              const u = draft.users[currentUser.telegramId];
+              if (u) {
+                u.verified = false;
+              }
+            });
+            syncUserToFirebase({ ...currentUser, verified: false });
+            triggerHaptic('error');
+            toast.error(`⚠️ আপনি '${ch.name}' চ্যানেলে নেই! ওয়েবসাইট ব্যবহার করার জন্য আবার জয়েন করে ভেরিফাই করুন।`);
+            break;
           }
         } catch {
           // Ignore network glitch

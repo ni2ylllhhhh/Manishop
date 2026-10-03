@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { appStore } from '../lib/store';
 import { syncUserToFirebase } from '../lib/firebase';
-import { openTelegramChat, triggerHaptic } from '../lib/telegram';
+import { openTelegramChat, triggerHaptic, checkTelegramMembership } from '../lib/telegram';
 
 export function ChannelVerificationGate({ children }: { children: React.ReactNode }) {
   const { user, config } = useAuth();
@@ -13,16 +13,16 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
   const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
 
-  // If forceChannelVerification is disabled by admin, allow access immediately
-  if (config.forceChannelVerification === false) {
-    return <>{children}</>;
-  }
-
-  // If user is already verified, render application
-  const isVerified = Boolean(user?.verified);
-  if (isVerified) {
-    return <>{children}</>;
-  }
+  // Check if verified in current active session
+  const [sessionVerified, setSessionVerified] = useState<boolean>(() => {
+    try {
+      if (!user?.telegramId) return false;
+      const ok = sessionStorage.getItem(`tg_gate_ok_${user.telegramId}`) === '1';
+      return ok && Boolean(user.verified);
+    } catch {
+      return false;
+    }
+  });
 
   const channels = config.requiredChannels && config.requiredChannels.length > 0
     ? config.requiredChannels
@@ -52,7 +52,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
     const token = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
     if (!token) {
-      toast.error("বট কনফিগারেশন অনুপস্থিত!");
+      if (showToasts) toast.error("বট কনফিগারেশন অনুপস্থিত!");
       setChecking(false);
       return;
     }
@@ -68,18 +68,14 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
 
         try {
-          const res = await fetch(
-            `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${encodeURIComponent(ch.username)}&user_id=${encodeURIComponent(user.telegramId)}`
-          );
-          const data = await res.json().catch(() => ({}));
-          if (data.ok) {
-            const st = data.result?.status;
-            const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
-            nextJoined[ch.id] = isMember;
-            if (!isMember) missingNames.push(ch.name);
-          } else if (data.description && data.description.includes("member list is inaccessible")) {
-            setAdminNotice("টিপ: বটের মেম্বারশিপ চেকের জন্য বটকে চ্যানেলে অ্যাডমিন করতে হবে।");
-            if (clickedMap[ch.id]) {
+          const res = await checkTelegramMembership(token, ch.username, user.telegramId);
+
+          if (res.ok && res.isMember) {
+            nextJoined[ch.id] = true;
+          } else if (res.needsBotAdmin) {
+            setAdminNotice("⚠️ টিপ: বটের ফুল মেম্বারশিপ চেকের জন্য বটকে মেইন চ্যানেলে অ্যাডমিন করুন।");
+            // If user clicked join link or previously joined, treat as joined during setup
+            if (clickedMap[ch.id] || Boolean(user.verified)) {
               nextJoined[ch.id] = true;
             } else {
               nextJoined[ch.id] = false;
@@ -103,7 +99,11 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           toast.success("🎉 অভিনন্দন! চ্যানেল ভেরিফিকেশন সফল হয়েছে।");
         }
 
-        // Update local user state
+        // Set session verification flag
+        sessionStorage.setItem(`tg_gate_ok_${user.telegramId}`, '1');
+        setSessionVerified(true);
+
+        // Update local state
         appStore.update((draft) => {
           const u = draft.users[user.telegramId];
           if (u) {
@@ -111,12 +111,12 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           }
         });
 
-        // Persist verified state to Firebase Realtime Database
+        // Persist verified state to Firebase RTDB
         const updatedUser = { ...user, verified: true };
         syncUserToFirebase(updatedUser);
       } else {
-        triggerHaptic("error");
         if (showToasts) {
+          triggerHaptic("error");
           toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ জয়েন করেননি!`);
         }
       }
@@ -130,11 +130,28 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     }
   };
 
+  // Initial check on mount
+  useEffect(() => {
+    if (!sessionVerified && config.forceChannelVerification !== false && user?.telegramId) {
+      checkMembership(false);
+    }
+  }, [user?.telegramId]);
+
   const handleOpenChannel = (id: string, url: string) => {
     triggerHaptic("medium");
     setClickedMap((prev) => ({ ...prev, [id]: true }));
     openTelegramChat(url);
   };
+
+  // If forceChannelVerification is disabled by admin, allow access immediately
+  if (config.forceChannelVerification === false) {
+    return <>{children}</>;
+  }
+
+  // If verified in this active session AND user.verified is true, render application
+  if (sessionVerified && user?.verified) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/90 backdrop-blur-md select-none">

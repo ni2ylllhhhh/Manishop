@@ -83,7 +83,7 @@ const initialSeedUsers: Record<string, User> = {
     referredBy: null,
     binanceId: "84729104",
     following: [],
-    verified: true,
+    verified: false,
     banned: false,
     createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
     lastLogin: new Date().toISOString()
@@ -106,7 +106,7 @@ const initialSeedUsers: Record<string, User> = {
     referredBy: "984210452",
     binanceId: "19402834",
     following: ["984210452"],
-    verified: true,
+    verified: false,
     banned: false,
     createdAt: new Date(Date.now() - 24 * 86400000).toISOString(),
     lastLogin: new Date().toISOString()
@@ -129,7 +129,7 @@ const initialSeedUsers: Record<string, User> = {
     referredBy: "742189301",
     binanceId: "93847102",
     following: [],
-    verified: true,
+    verified: false,
     banned: false,
     createdAt: new Date(Date.now() - 18 * 86400000).toISOString(),
     lastLogin: new Date().toISOString()
@@ -427,14 +427,12 @@ export async function loginOrRegisterUser(
   // Check if we already have the user cached locally in appStore
   const localExisting = appStore.get().users[tid];
 
-  // If local user does NOT exist, check remote Firebase with a fast 1-second timeout (never hang)
+  // Always fetch latest state from Firebase with a fast 1-second timeout
   let remoteUser: User | null = null;
-  if (!localExisting) {
-    try {
-      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
-      remoteUser = await Promise.race([fetchUserFromFirebase(tid), timeoutPromise]);
-    } catch {}
-  }
+  try {
+    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+    remoteUser = await Promise.race([fetchUserFromFirebase(tid), timeoutPromise]);
+  } catch {}
 
   const cleanReferrer = referredBy && String(referredBy).trim() !== tid ? String(referredBy).trim() : null;
   let remoteParent: User | null = null;
@@ -464,6 +462,9 @@ export async function loginOrRegisterUser(
       existing.username = telegramUser.username || existing.username;
       if (telegramUser.photo_url && !existing.photoUrl.startsWith("http")) {
         existing.photoUrl = telegramUser.photo_url;
+      }
+      if (remoteUser && typeof remoteUser.verified === 'boolean') {
+        existing.verified = remoteUser.verified;
       }
       existing.lastLogin = now;
       if (existing.todayDate !== getTodayDateString()) {

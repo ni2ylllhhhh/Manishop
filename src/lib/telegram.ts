@@ -368,6 +368,44 @@ export async function showMonetagAd(zone: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 3500));
 }
 
+export interface ChannelCheckResult {
+  ok: boolean;
+  isMember: boolean;
+  status?: string;
+  error?: string;
+  needsBotAdmin?: boolean;
+}
+
+export async function checkTelegramMembership(
+  botToken: string,
+  channelUsername: string,
+  userId: string | number
+): Promise<ChannelCheckResult> {
+  if (!botToken || !channelUsername || !userId) {
+    return { ok: false, isMember: false, error: "Missing parameters" };
+  }
+  const clean = channelUsername.replace(/^@/, "").trim();
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=@${encodeURIComponent(clean)}&user_id=${encodeURIComponent(String(userId))}`
+    );
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      const st = data.result?.status;
+      const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
+      return { ok: true, isMember, status: st };
+    }
+    const desc = data.description || "";
+    if (desc.includes("member list is inaccessible")) {
+      return { ok: false, isMember: false, needsBotAdmin: true, error: "Bot is not administrator in channel" };
+    }
+    // PARTICIPANT_ID_INVALID or user not found means definitely NOT a member
+    return { ok: true, isMember: false, status: "not_member", error: desc };
+  } catch (err: any) {
+    return { ok: false, isMember: false, error: err?.message || "Network error" };
+  }
+}
+
 // Initial auto-patch on module load
 if (typeof window !== 'undefined') {
   patchTelegramCloudStorage();
