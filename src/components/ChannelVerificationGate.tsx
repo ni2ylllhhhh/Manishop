@@ -345,7 +345,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
                 </div>
               </div>
 
-              {/* Dynamic Channels Grid */}
+              {/* Dynamic Channels Grid - ENTIRE BOX IS CLICKABLE */}
               <div className={`mt-3 grid gap-2 ${channels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 {channels.map((ch) => {
                   const isJoined = Boolean(joinedMap[ch.id]);
@@ -353,15 +353,23 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
                   return (
                     <div
                       key={ch.id}
-                      className={`flex flex-col items-center justify-between rounded-xl border p-2 transition-all ${
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenChannel(ch.id, ch.url)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          handleOpenChannel(ch.id, ch.url);
+                        }
+                      }}
+                      className={`flex flex-col items-center justify-between rounded-xl border p-2.5 transition-all cursor-pointer select-none active:scale-95 group ${
                         isJoined
-                          ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)]'
-                          : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)]'
+                          ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)] hover:border-emerald-400'
+                          : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)] hover:border-[#ff4d5a] hover:shadow-[0_0_15px_rgba(255,42,58,0.5)]'
                       }`}
                     >
                       {/* Circular Icon */}
                       <div
-                        className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-md ${
+                        className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-md transition-transform group-hover:scale-105 ${
                           isJoined
                             ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 border-emerald-400'
                             : 'bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] border-[#ff5566]'
@@ -385,38 +393,17 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
                         </p>
                       </div>
 
-                      {/* Button */}
+                      {/* Pill Status / Action Button */}
                       {isJoined ? (
                         <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1.5 px-2 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
                           <CheckCircle2 className="h-3 w-3" />
                           <span>Joined ✅</span>
                         </div>
                       ) : (
-                        <div className="relative mt-2 w-full">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenChannel(ch.id, ch.url)}
-                            className="relative flex w-full items-center justify-between gap-1 rounded-full bg-gradient-to-r from-[#990011] via-[#c41324] to-[#0d3b82] py-1.5 px-2 text-[9.5px] font-black text-white border-2 animate-police-beacon hover:brightness-125 active:scale-95 transition cursor-pointer select-none"
-                          >
-                            {/* Left Red Flashing Light */}
-                            <span className="relative flex h-2 w-2 items-center justify-center shrink-0">
-                              <span className="absolute h-3.5 w-3.5 rounded-full bg-red-500 animate-ping opacity-80" />
-                              <span className="relative h-2 w-2 rounded-full bg-red-500 animate-lamp-red" />
-                            </span>
-
-                            {/* Center Content */}
-                            <div className="flex items-center gap-1 min-w-0">
-                              <TelegramIcon className="h-3 w-3 text-white shrink-0 drop-shadow" />
-                              <span className="truncate uppercase tracking-tight font-black">Join Channel</span>
-                              <span className="text-[10px] animate-bounce">👉</span>
-                            </div>
-
-                            {/* Right Blue Flashing Light */}
-                            <span className="relative flex h-2 w-2 items-center justify-center shrink-0">
-                              <span className="absolute h-3.5 w-3.5 rounded-full bg-cyan-400 animate-ping opacity-80" />
-                              <span className="relative h-2 w-2 rounded-full bg-cyan-400 animate-lamp-blue" />
-                            </span>
-                          </button>
+                        <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1.5 px-2 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] group-hover:brightness-110 transition">
+                          <TelegramIcon className="h-3 w-3 text-white shrink-0 drop-shadow" />
+                          <span className="truncate uppercase font-bold tracking-tight">Join Channel</span>
+                          <span className="text-[10px] transition-transform group-hover:translate-x-0.5">→</span>
                         </div>
                       )}
                     </div>
