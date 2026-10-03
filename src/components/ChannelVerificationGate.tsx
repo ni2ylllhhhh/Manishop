@@ -387,20 +387,37 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
                       {/* Button */}
                       {isJoined ? (
-                        <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1 px-1.5 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
+                        <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1.5 px-2 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
                           <CheckCircle2 className="h-3 w-3" />
                           <span>Joined ✅</span>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenChannel(ch.id, ch.url)}
-                          className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
-                        >
-                          <TelegramIcon className="h-3 w-3 text-white shrink-0" />
-                          <span className="truncate">Join Channel</span>
-                          <span className="text-[10px]">→</span>
-                        </button>
+                        <div className="relative mt-2 w-full">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChannel(ch.id, ch.url)}
+                            className="relative flex w-full items-center justify-between gap-1 rounded-full bg-gradient-to-r from-[#990011] via-[#c41324] to-[#0d3b82] py-1.5 px-2 text-[9.5px] font-black text-white border-2 animate-police-beacon hover:brightness-125 active:scale-95 transition cursor-pointer select-none"
+                          >
+                            {/* Left Red Flashing Light */}
+                            <span className="relative flex h-2 w-2 items-center justify-center shrink-0">
+                              <span className="absolute h-3.5 w-3.5 rounded-full bg-red-500 animate-ping opacity-80" />
+                              <span className="relative h-2 w-2 rounded-full bg-red-500 animate-lamp-red" />
+                            </span>
+
+                            {/* Center Content */}
+                            <div className="flex items-center gap-1 min-w-0">
+                              <TelegramIcon className="h-3 w-3 text-white shrink-0 drop-shadow" />
+                              <span className="truncate uppercase tracking-tight font-black">Join Channel</span>
+                              <span className="text-[10px] animate-bounce">👉</span>
+                            </div>
+
+                            {/* Right Blue Flashing Light */}
+                            <span className="relative flex h-2 w-2 items-center justify-center shrink-0">
+                              <span className="absolute h-3.5 w-3.5 rounded-full bg-cyan-400 animate-ping opacity-80" />
+                              <span className="relative h-2 w-2 rounded-full bg-cyan-400 animate-lamp-blue" />
+                            </span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   );
