@@ -217,11 +217,11 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
   // The website is ALWAYS rendered underneath so the user clearly sees the site!
   return (
     <div className="relative min-h-screen w-full">
-      {/* 1. Underlying Website Content (Visible behind loading or verification popup) */}
+      {/* 1. Underlying Website Content (Visible crystal clear behind loading or verification popup) */}
       <div
-        className={`transition-all duration-300 ${
+        className={`transition-all duration-200 ${
           isVerifyingInitial || !isVerifiedState
-            ? "pointer-events-none select-none filter blur-[1.5px] opacity-70"
+            ? "pointer-events-none select-none opacity-85"
             : ""
         }`}
         aria-hidden={!isVerifiedState || isVerifyingInitial}
@@ -229,13 +229,13 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         {children}
       </div>
 
-      {/* 2. Loading State Overlay (Translucent so website is visible underneath) */}
+      {/* 2. Loading State Overlay (Clean translucent tint - zero blur) */}
       {isVerifyingInitial && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] px-6 select-none animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 px-6 select-none animate-fadeIn">
           {/* Futuristic Red Cyber Emblem */}
           <div className="relative flex items-center justify-center">
-            <div className="absolute -inset-3 rounded-full bg-red-600/30 blur-lg animate-pulse" />
-            <div className="relative h-20 w-20 rounded-full border-2 border-red-500 bg-gradient-to-b from-[#180306] via-[#100203] to-black shadow-[0_0_25px_rgba(255,42,58,0.7)] flex items-center justify-center">
+            <div className="absolute -inset-2 rounded-full bg-red-600/20 animate-pulse" />
+            <div className="relative h-20 w-20 rounded-full border-2 border-red-500 bg-gradient-to-b from-[#180306] via-[#100203] to-black shadow-[0_0_20px_rgba(255,42,58,0.7)] flex items-center justify-center">
               {/* Spinning Neon Ring */}
               <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-red-500 animate-spin" />
               <TelegramIcon className="h-9 w-9 text-red-500 drop-shadow-[0_0_8px_rgba(255,42,58,0.9)]" />
@@ -243,7 +243,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           </div>
 
           {/* Loading Header */}
-          <div className="mt-5 rounded-2xl bg-white/95 px-5 py-3 shadow-xl backdrop-blur-md text-center border border-red-100">
+          <div className="mt-5 rounded-2xl bg-white px-5 py-3 shadow-xl text-center border border-red-100">
             <h2 className="text-sm font-black text-slate-800 tracking-tight">
               চ্যানেল মেম্বারশিপ যাচাই হচ্ছে...
             </h2>
@@ -258,17 +258,17 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* 3. Mandatory Channel Verification Modal (Translucent backdrop - NO solid black screen!) */}
+      {/* 3. Mandatory Channel Verification Modal (Translucent clean backdrop - zero blur!) */}
       {!isVerifyingInitial && !isVerifiedState && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/50 backdrop-blur-[3px] overflow-y-auto select-none animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/35 overflow-y-auto select-none animate-fadeIn">
           {/* Centered Futuristic Red Verification Card */}
           <div className="relative w-full max-w-[325px] pt-8">
             
             {/* Top Centered Glowing Emblem: ManeiShopBD_Bot */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
               <div className="relative flex items-center justify-center">
-                {/* Red Pulsing Aura */}
-                <div className="absolute -inset-1.5 rounded-full bg-red-600/60 blur-md animate-pulse" />
+                {/* Red Aura */}
+                <div className="absolute -inset-1.5 rounded-full bg-red-600/30 animate-pulse" />
 
                 {/* Emblem Circle */}
                 <div className="relative h-16 w-16 rounded-full border-2 border-[#ff2a3a] bg-gradient-to-b from-[#250508] via-[#140204] to-black p-0.5 shadow-[0_0_20px_rgba(255,42,58,0.85),inset_0_0_12px_rgba(255,42,58,0.6)] flex items-center justify-center">
@@ -311,7 +311,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
             </div>
 
             {/* Outer Cyber Box Container with Glowing Red Borders */}
-            <div className="relative rounded-2xl border-2 border-[#ff2a3a] bg-gradient-to-b from-[#180306]/95 via-[#0d0203]/95 to-[#080102]/95 px-3 pt-8 pb-3 shadow-[0_0_30px_rgba(255,42,58,0.65),inset_0_0_22px_rgba(255,42,58,0.35)] backdrop-blur-md">
+            <div className="relative rounded-2xl border-2 border-[#ff2a3a] bg-gradient-to-b from-[#180306] via-[#0d0203] to-[#080102] px-3 pt-8 pb-3 shadow-[0_0_30px_rgba(255,42,58,0.65),inset_0_0_22px_rgba(255,42,58,0.35)]">
               
               {/* Tech Corner Accents */}
               <div className="absolute top-1.5 left-2 h-2 w-2 border-t-2 border-l-2 border-[#ff6677] opacity-80" />
