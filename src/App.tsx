@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'sonner';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthGate } from './components/AuthGate';
+import { ChannelVerificationGate } from './components/ChannelVerificationGate';
 import { BottomNav } from './components/BottomNav';
 import { Home } from './pages/Home';
 import { Refer } from './pages/Refer';
@@ -31,21 +32,23 @@ function AppShell() {
   return (
     <AuthProvider>
       <AuthGate>
-        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-cream shadow-2xl relative">
-          <div className={hideBottomPadding ? "" : "pb-16"}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/refer" element={<Refer />} />
-              <Route path="/rank" element={<RankList />} />
-              <Route path="/wallet" element={<Wallet />} />
-              <Route path="/wallet/cashout" element={<CashOut />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/profile/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+        <ChannelVerificationGate>
+          <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-cream shadow-2xl relative">
+            <div className={hideBottomPadding ? "" : "pb-16"}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/refer" element={<Refer />} />
+                <Route path="/rank" element={<RankList />} />
+                <Route path="/wallet" element={<Wallet />} />
+                <Route path="/wallet/cashout" element={<CashOut />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile/settings" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </div>
+            <BottomNav />
           </div>
-          <BottomNav />
-        </div>
+        </ChannelVerificationGate>
       </AuthGate>
     </AuthProvider>
   );

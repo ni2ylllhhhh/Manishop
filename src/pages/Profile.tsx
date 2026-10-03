@@ -43,10 +43,21 @@ export function Profile() {
       {/* Main Profile Info Card */}
       <section className="rounded-2xl bg-white p-3 shadow-card">
         <div>
-          <p className="flex items-center gap-1 text-[16px] font-extrabold text-ink">
-            {user.firstName} {user.lastName}
-            {user.verified && <BadgeCheck className="h-4 w-4 text-yellow-500 fill-yellow-500" />}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1 text-[16px] font-extrabold text-ink">
+              {user.firstName} {user.lastName}
+              {user.verified && <BadgeCheck className="h-4 w-4 text-emerald-500 fill-emerald-500" />}
+            </p>
+            {user.verified ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9.5px] font-bold text-emerald-600 border border-emerald-200">
+                ✅ চ্যানেল ভেরিফাইড
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[9.5px] font-bold text-red-600 border border-red-200">
+                ❌ আনভেরিফাইড
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-400 font-mono">
             <UserIcon className="h-3 w-3" /> User ID: {user.telegramId}
           </p>
