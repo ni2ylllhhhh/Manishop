@@ -142,7 +142,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ নেই! দয়া করে চ্যানেলে জয়েন করুন।`);
         } else if (wasVerified) {
           triggerHaptic("error");
-          toast.error(`⚠️ আপনি চ্যানেল আন-জয়েন করেছেন! সাইট ব্যবহার করতে আবার জয়েন করুন।`);
+          toast.error("⚠️ চ্যানেল ভেরিফিকেশন প্রয়োজন। দয়া করে চ্যানেলে জয়েন করুন।");
         }
       }
     } catch (err) {
@@ -156,7 +156,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     }
   };
 
-  // 1. Initial verification every time user enters the website
+  // 1. Initial verification every time user enters the website (On Every Entry / Page Reload)
   useEffect(() => {
     if (!user?.telegramId) {
       setIsVerifyingInitial(false);
@@ -183,25 +183,29 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     });
   }, [user?.telegramId, config.forceChannelVerification]);
 
-  // 2. Continuous surveillance: Checks when switching tabs OR periodically every 15 seconds
+  // 2. Visibility, Tab Switch, Focus Return & 25-Second Continuous Background Surveillance
   useEffect(() => {
     if (config.forceChannelVerification === false || !user?.telegramId) return;
 
-    const onVisibilityChange = () => {
+    const handleFocusOrVisible = () => {
       if (document.visibilityState === 'visible') {
         performVerification(false);
       }
     };
 
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+    window.addEventListener('focus', handleFocusOrVisible);
+
+    // Continuous 25-second background interval check
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         performVerification(false);
       }
-    }, 15000);
+    }, 25000);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+      window.removeEventListener('focus', handleFocusOrVisible);
       clearInterval(interval);
     };
   }, [user?.telegramId, config.forceChannelVerification, channels, config.botToken]);
