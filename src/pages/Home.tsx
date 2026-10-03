@@ -3,6 +3,7 @@ import { CirclePlay, Play, Zap, Globe, LoaderCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { formatUsd } from '../lib/format';
+import { TelegramChannelsPopup } from '../components/TelegramChannelsPopup';
 
 export function Home() {
   const {
@@ -22,6 +23,9 @@ export function Home() {
 
   return (
     <main className="px-3 pt-3">
+      {/* Telegram Channels Promo Popup */}
+      <TelegramChannelsPopup />
+
       {/* User Header Card */}
       <section className="mb-3 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 shadow-card">
         <Avatar src={user.photoUrl} name={user.firstName} size={38} />
