@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
+import { CheckCircle2, Loader2, ShieldAlert, Sparkles, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { appStore } from '../lib/store';
@@ -9,12 +9,15 @@ import { openTelegramChat, triggerHaptic, checkTelegramMembership } from '../lib
 export function ChannelVerificationGate({ children }: { children: React.ReactNode }) {
   const { user, config } = useAuth();
 
-  // Loading state during entry check
+  // Loading state during initial entry check
   const [isVerifyingInitial, setIsVerifyingInitial] = useState(true);
+  
+  // Real-time verified state
   const [isVerifiedState, setIsVerifiedState] = useState<boolean>(() => {
     try {
       if (!user?.telegramId) return false;
-      return sessionStorage.getItem(`tg_gate_ok_${user.telegramId}`) === '1' && Boolean(user.verified);
+      const ok = sessionStorage.getItem(`tg_gate_ok_${user.telegramId}`) === '1';
+      return ok && Boolean(user.verified);
     } catch {
       return false;
     }
@@ -46,7 +49,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
       ];
 
-  // Core verification worker
+  // Core verification worker - STRICT REAL-TIME BOT CHECK
   const performVerification = async (isManualClick = false) => {
     if (!user?.telegramId) {
       setIsVerifyingInitial(false);
@@ -65,7 +68,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     }
 
     try {
-      const nextJoined: Record<string, boolean> = { ...joinedMap };
+      const nextJoined: Record<string, boolean> = {};
       const missingNames: string[] = [];
       let allMembers = true;
 
@@ -79,48 +82,36 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           const res = await checkTelegramMembership(token, ch.username, user.telegramId);
 
           if (res.ok && res.isMember) {
-            // Strictly verified as member/creator/admin by Bot API
+            // Strictly verified as active member/creator/admin by Telegram Bot API
             nextJoined[ch.id] = true;
           } else if (res.needsBotAdmin) {
-            // Bot is not yet an administrator in this channel, so Telegram API cannot read member list.
-            // Don't block the user unfairly!
-            setAdminNotice("টিপ: বটের পূর্ণাঙ্গ মেম্বারশিপ চেকের জন্য বটকে মেইন চ্যানেলে অ্যাডমিন করুন।");
-            nextJoined[ch.id] = true;
-          } else if (res.ok && !res.isMember) {
-            // Bot IS admin in this channel and confirmed user is NOT in the channel
-            // If user clicked join link just now, grant grace
-            if (clickedMap[ch.id]) {
-              nextJoined[ch.id] = true;
-            } else {
-              nextJoined[ch.id] = false;
+            // Bot is NOT yet an admin in this channel (Telegram returns member list is inaccessible)
+            setAdminNotice(`⚠️ বটের মেম্বারশিপ চেকের জন্য @${ch.username} এ বটকে অ্যাডমিন করতে হবে`);
+            // In manual verify mode or clicked, permit temporary pass
+            const passed = Boolean(clickedMap[ch.id] || isManualClick);
+            nextJoined[ch.id] = passed;
+            if (!passed) {
               allMembers = false;
               missingNames.push(ch.name);
             }
           } else {
-            // Other network error or API issue - fallback to clicked state
-            if (clickedMap[ch.id] || Boolean(user.verified)) {
-              nextJoined[ch.id] = true;
-            } else {
-              nextJoined[ch.id] = false;
-              allMembers = false;
-              missingNames.push(ch.name);
-            }
-          }
-        } catch {
-          if (clickedMap[ch.id] || Boolean(user.verified)) {
-            nextJoined[ch.id] = true;
-          } else {
+            // DEFINITIVELY NOT IN CHANNEL (User left, unjoined, or never joined)
             nextJoined[ch.id] = false;
             allMembers = false;
             missingNames.push(ch.name);
           }
+        } catch (err) {
+          console.warn("[Verification] Channel check error:", ch.username, err);
+          nextJoined[ch.id] = false;
+          allMembers = false;
+          missingNames.push(ch.name);
         }
       }
 
       setJoinedMap(nextJoined);
 
       if (allMembers) {
-        // User is verified!
+        // User passed all channel checks!
         sessionStorage.setItem(`tg_gate_ok_${user.telegramId}`, '1');
         setIsVerifiedState(true);
 
@@ -135,7 +126,8 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           toast.success("🎉 অভিনন্দন! চ্যানেল ভেরিফিকেশন সফল হয়েছে।");
         }
       } else {
-        // User not in channels - show verification request popup
+        // User has LEFT or is NOT in channels! IMMEDIATELY LOCK!
+        const wasVerified = isVerifiedState;
         sessionStorage.removeItem(`tg_gate_ok_${user.telegramId}`);
         setIsVerifiedState(false);
 
@@ -147,11 +139,14 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
         if (isManualClick) {
           triggerHaptic("error");
-          toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ জয়েন করেননি!`);
+          toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ নেই! দয়া করে চ্যানেলে জয়েন করুন।`);
+        } else if (wasVerified) {
+          triggerHaptic("error");
+          toast.error(`⚠️ আপনি চ্যানেল আন-জয়েন করেছেন! সাইট ব্যবহার করতে আবার জয়েন করুন।`);
         }
       }
     } catch (err) {
-      console.error("[Verification] Error during check:", err);
+      console.error("[Verification] General error:", err);
       if (isManualClick) {
         toast.error("যাচাইকরণে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
       }
@@ -179,7 +174,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
     performVerification(false).finally(() => {
       const elapsed = Date.now() - startTime;
-      const minDisplayMs = 450; // smooth brief check
+      const minDisplayMs = 450;
       if (elapsed < minDisplayMs) {
         setTimeout(() => setIsVerifyingInitial(false), minDisplayMs - elapsed);
       } else {
@@ -188,7 +183,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     });
   }, [user?.telegramId, config.forceChannelVerification]);
 
-  // 2. Background re-check when user returns to tab/app (e.g. after opening Telegram)
+  // 2. Continuous surveillance: Checks when switching tabs OR periodically every 15 seconds
   useEffect(() => {
     if (config.forceChannelVerification === false || !user?.telegramId) return;
 
@@ -199,13 +194,21 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        performVerification(false);
+      }
+    }, 15000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearInterval(interval);
+    };
   }, [user?.telegramId, config.forceChannelVerification, channels, config.botToken]);
 
   const handleOpenChannel = (id: string, url: string) => {
     triggerHaptic("medium");
     setClickedMap((prev) => ({ ...prev, [id]: true }));
-    setJoinedMap((prev) => ({ ...prev, [id]: true }));
     openTelegramChat(url);
   };
 
@@ -214,12 +217,12 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     return <>{children}</>;
   }
 
-  // The website is ALWAYS rendered underneath so the user clearly sees the site!
+  // The website is ALWAYS rendered underneath so the user clearly sees the site! ZERO BLUR!
   return (
     <div className="relative min-h-screen w-full">
-      {/* 1. Underlying Website Content (Visible crystal clear behind loading or verification popup) */}
+      {/* 1. Underlying Website Content (100% sharp, zero blur) */}
       <div
-        className={`transition-all duration-200 ${
+        className={`transition-opacity duration-200 ${
           isVerifyingInitial || !isVerifiedState
             ? "pointer-events-none select-none opacity-85"
             : ""
@@ -258,7 +261,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* 3. Mandatory Channel Verification Modal (Translucent clean backdrop - zero blur!) */}
+      {/* 3. Mandatory Channel Verification Modal (Translucent clean backdrop - ZERO blur!) */}
       {!isVerifyingInitial && !isVerifiedState && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/35 overflow-y-auto select-none animate-fadeIn">
           {/* Centered Futuristic Red Verification Card */}
@@ -402,9 +405,11 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
               {/* Admin Tip Notice if any */}
               {adminNotice && (
-                <p className="mt-2 text-center text-[8.5px] text-amber-300/90 font-mono leading-tight">
-                  {adminNotice}
-                </p>
+                <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/30 p-1.5 text-center">
+                  <p className="text-[8.5px] text-amber-300 font-bold leading-tight">
+                    {adminNotice}
+                  </p>
+                </div>
               )}
 
               {/* Central Main Verification Button */}
