@@ -28,7 +28,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
   const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
 
-  const channels = config.requiredChannels && config.requiredChannels.length > 0
+  const channels = Array.isArray(config.requiredChannels)
     ? config.requiredChannels
     : [
         {
@@ -216,8 +216,8 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     openTelegramChat(url);
   };
 
-  // If forceChannelVerification is disabled by admin, render website normally
-  if (config.forceChannelVerification === false) {
+  // If forceChannelVerification is disabled by admin OR no channels are configured, render website freely
+  if (config.forceChannelVerification === false || channels.length === 0) {
     return <>{children}</>;
   }
 

@@ -298,7 +298,7 @@ function loadInitialData(): AppDatabase {
     // Ensure all 4 tasks use the requested link
     mergedConfig.tasks = defaultConfig.tasks;
 
-    if (!Array.isArray(mergedConfig.requiredChannels) || mergedConfig.requiredChannels.length === 0) {
+    if (!Array.isArray(mergedConfig.requiredChannels)) {
       mergedConfig.requiredChannels = defaultConfig.requiredChannels;
     }
     if (typeof mergedConfig.forceChannelVerification !== 'boolean') {

@@ -45,8 +45,8 @@ import type { AppConfig, User, Withdrawal, RequiredChannel } from '../types';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'channels', label: '📢 Channels Gate (অন/অফ)' },
   { id: 'users', label: 'Users' },
-  { id: 'channels', label: 'Telegram Channels' },
   { id: 'withdrawals', label: 'Withdrawals' },
   { id: 'ads', label: 'Ad Slots' },
   { id: 'tasks', label: 'Tasks' },
@@ -621,36 +621,55 @@ export function Admin() {
         {activeTab === 'channels' && (
           <SectionCard title="Telegram Verification Channels & Bot Surveillance">
             {/* Master Force Verification Switch */}
-            <div className="mb-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+            <div className={`mb-4 rounded-2xl p-4 border transition-all ${
+              cfg.forceChannelVerification !== false
+                ? 'bg-emerald-50/70 border-emerald-200'
+                : 'bg-rose-50/70 border-rose-200'
+            }`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <ShieldAlert className="h-4 w-4 text-brand-500" />
-                    <h4 className="text-xs font-bold text-slate-800">
-                      Force Channel Verification (বাধ্যতামূলক চ্যানেল ভেরিফিকেশন)
+                    <ShieldAlert className={`h-5 w-5 ${
+                      cfg.forceChannelVerification !== false ? 'text-emerald-600' : 'text-rose-500'
+                    }`} />
+                    <h4 className="text-sm font-bold text-slate-800">
+                      চ্যানেল ভেরিফিকেশন গেট (Master Switch)
                     </h4>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${
                       cfg.forceChannelVerification !== false
-                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                        : 'bg-slate-200 text-slate-600'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-rose-600 text-white shadow-xs'
                     }`}>
-                      {cfg.forceChannelVerification !== false ? 'Active (চালু)' : 'Disabled (বন্ধ)'}
+                      {cfg.forceChannelVerification !== false ? 'সক্রিয় (ON)' : 'নিষ্ক্রিয় (OFF)'}
                     </span>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    এটি চালু থাকলে ইউজার সবগুলো চ্যানেলে জয়েন না করা পর্যন্ত ওয়েবসাইটের কোনো ফিচার ব্যবহার করতে পারবে না। এছাড়া ২৪/৭ অটো নজরদারি সচল থাকবে।
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {cfg.forceChannelVerification !== false
+                      ? '✅ ভেরিফিকেশন চালু রয়েছে: ইউজার সবকটি চ্যানেলে জয়েন না থাকলে ওয়েবসাইট লক থাকবে এবং ২৫ সেকেন্ড পর পর লাইভ নজরদারি চলবে।'
+                      : '⛔ ভেরিফিকেশন বন্ধ রয়েছে: কোনো ইউজারকে চ্যানেল জয়েন করতে হবে না, সবাই সরাসরি ওয়েবসাইটে ঢুকতে পারবে।'}
                   </p>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => updateConfig({ forceChannelVerification: cfg.forceChannelVerification === false })}
-                  className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition shadow-sm ${
+                  onClick={() => {
+                    const nextVal = cfg.forceChannelVerification === false;
+                    updateConfig({ forceChannelVerification: nextVal });
+                    if (nextVal) {
+                      toast.success("✅ চ্যানেল ভেরিফিকেশন সফলভাবে চালু করা হয়েছে!");
+                    } else {
+                      toast.info("⛔ চ্যানেল ভেরিফিকেশন বন্ধ করা হয়েছে!");
+                    }
+                  }}
+                  className={`rounded-xl px-5 py-2.5 text-xs font-black text-white transition shadow-md active:scale-95 ${
                     cfg.forceChannelVerification !== false
-                      ? 'bg-rose-500 hover:bg-rose-600'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
+                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
                   }`}
                 >
-                  {cfg.forceChannelVerification !== false ? 'Disable Gate' : 'Enable Gate'}
+                  {cfg.forceChannelVerification !== false
+                    ? '🔴 ভেরিফিকেশন বন্ধ করুন (Turn OFF)'
+                    : '🟢 ভেরিফিকেশন চালু করুন (Turn ON)'}
                 </button>
               </div>
             </div>
@@ -659,7 +678,7 @@ export function Admin() {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-700">
-                  Required Channels List ({cfg.requiredChannels?.length || 0})
+                  বাধ্যতামূলক চ্যানেলের তালিকা ({cfg.requiredChannels?.length || 0} টি)
                 </h4>
                 <p className="text-[11px] text-slate-400">
                   নিচের চ্যানেলগুলোতে ইউজারকে বাধ্যতামূলক জয়েন করতে হবে
@@ -668,10 +687,10 @@ export function Admin() {
               <button
                 type="button"
                 onClick={() => setIsAddingChannel(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3.5 py-2 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm active:scale-95"
               >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Channel</span>
+                <Plus className="h-4 w-4" />
+                <span>+ চ্যানেল অ্যাড করুন (Add)</span>
               </button>
             </div>
 
