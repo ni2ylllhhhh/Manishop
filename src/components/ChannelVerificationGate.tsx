@@ -1,42 +1,49 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, AlertCircle, Loader2, ShieldAlert, Sparkles, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle2, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { appStore } from '../lib/store';
 import { syncUserToFirebase } from '../lib/firebase';
 import { openTelegramChat, triggerHaptic } from '../lib/telegram';
 
-const REQUIRED_CHANNELS = [
-  {
-    id: 'main',
-    name: 'Main',
-    tag: 'Channel',
-    subtitle: 'All Videos • Updates • News',
-    username: 'jgjghjghh687',
-    url: 'https://t.me/jgjghjghh687'
-  },
-  {
-    id: 'payment',
-    name: 'Payment',
-    tag: 'Channel',
-    subtitle: 'Payment • Proofs • Updates',
-    username: 'Earning_Money_Lob',
-    url: 'https://t.me/Earning_Money_Lob'
-  }
-];
-
 export function ChannelVerificationGate({ children }: { children: React.ReactNode }) {
   const { user, config } = useAuth();
   const [checking, setChecking] = useState(false);
-  const [channel1Joined, setChannel1Joined] = useState(false);
-  const [channel2Joined, setChannel2Joined] = useState(false);
-  const [hasClickedChannel1, setHasClickedChannel1] = useState(false);
-  const [hasClickedChannel2, setHasClickedChannel2] = useState(false);
+  const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
+  const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
 
-  // If user is already verified, render the application directly
+  // If forceChannelVerification is disabled by admin, allow access immediately
+  if (config.forceChannelVerification === false) {
+    return <>{children}</>;
+  }
+
+  // If user is already verified, render application
   const isVerified = Boolean(user?.verified);
+  if (isVerified) {
+    return <>{children}</>;
+  }
+
+  const channels = config.requiredChannels && config.requiredChannels.length > 0
+    ? config.requiredChannels
+    : [
+        {
+          id: 'main',
+          name: 'Main',
+          tag: 'Channel',
+          subtitle: 'All Videos • Updates • News',
+          username: 'jgjghjghh687',
+          url: 'https://t.me/jgjghjghh687'
+        },
+        {
+          id: 'payment',
+          name: 'Payment',
+          tag: 'Channel',
+          subtitle: 'Payment • Proofs • Updates',
+          username: 'Earning_Money_Lob',
+          url: 'https://t.me/Earning_Money_Lob'
+        }
+      ];
 
   const checkMembership = async (showToasts = true) => {
     if (!user?.telegramId) return;
@@ -51,51 +58,46 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     }
 
     try {
-      let isCh1Member = false;
-      let isCh2Member = false;
+      const nextJoined: Record<string, boolean> = {};
+      const missingNames: string[] = [];
 
-      // 1. Check Channel 1 (@jgjghjghh687)
-      try {
-        const res1 = await fetch(
-          `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${REQUIRED_CHANNELS[0].username}&user_id=${user.telegramId}`
-        );
-        const data1 = await res1.json().catch(() => ({}));
-        if (data1.ok) {
-          const st = data1.result?.status;
-          isCh1Member = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
-        } else if (data1.description && data1.description.includes("member list is inaccessible")) {
-          // If the bot is not yet promoted to admin in Channel 1, but user clicked join link
-          setAdminNotice("টিপ: বটের ফুল ভেরিফিকেশনের জন্য @ManeiShopBD_Bot কে মেইন চ্যানেলে অ্যাডমিন করুন।");
-          if (hasClickedChannel1) {
-            isCh1Member = true;
-          }
+      for (const ch of channels) {
+        if (!ch.username) {
+          nextJoined[ch.id] = true;
+          continue;
         }
-      } catch (e) {
-        console.warn("Ch1 check error:", e);
+
+        try {
+          const res = await fetch(
+            `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${encodeURIComponent(ch.username)}&user_id=${encodeURIComponent(user.telegramId)}`
+          );
+          const data = await res.json().catch(() => ({}));
+          if (data.ok) {
+            const st = data.result?.status;
+            const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
+            nextJoined[ch.id] = isMember;
+            if (!isMember) missingNames.push(ch.name);
+          } else if (data.description && data.description.includes("member list is inaccessible")) {
+            setAdminNotice("টিপ: বটের মেম্বারশিপ চেকের জন্য বটকে চ্যানেলে অ্যাডমিন করতে হবে।");
+            if (clickedMap[ch.id]) {
+              nextJoined[ch.id] = true;
+            } else {
+              nextJoined[ch.id] = false;
+              missingNames.push(ch.name);
+            }
+          } else {
+            nextJoined[ch.id] = false;
+            missingNames.push(ch.name);
+          }
+        } catch {
+          nextJoined[ch.id] = Boolean(clickedMap[ch.id]);
+        }
       }
 
-      // 2. Check Channel 2 (@Earning_Money_Lob)
-      try {
-        const res2 = await fetch(
-          `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${REQUIRED_CHANNELS[1].username}&user_id=${user.telegramId}`
-        );
-        const data2 = await res2.json().catch(() => ({}));
-        if (data2.ok) {
-          const st = data2.result?.status;
-          isCh2Member = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
-        } else if (data2.description && data2.description.includes("member list is inaccessible")) {
-          if (hasClickedChannel2) {
-            isCh2Member = true;
-          }
-        }
-      } catch (e) {
-        console.warn("Ch2 check error:", e);
-      }
+      setJoinedMap(nextJoined);
+      const allJoined = channels.every((ch) => nextJoined[ch.id]);
 
-      setChannel1Joined(isCh1Member);
-      setChannel2Joined(isCh2Member);
-
-      if (isCh1Member && isCh2Member) {
+      if (allJoined) {
         triggerHaptic("success");
         if (showToasts) {
           toast.success("🎉 অভিনন্দন! চ্যানেল ভেরিফিকেশন সফল হয়েছে।");
@@ -115,14 +117,11 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
       } else {
         triggerHaptic("error");
         if (showToasts) {
-          const missing = [];
-          if (!isCh1Member) missing.push("মেইন চ্যানেল");
-          if (!isCh2Member) missing.push("পেমেন্ট চ্যানেল");
-          toast.error(`⚠️ আপনি এখনো ${missing.join(" ও ")} এ জয়েন করেননি!`);
+          toast.error(`⚠️ আপনি এখনো ${missingNames.join(" ও ")} এ জয়েন করেননি!`);
         }
       }
     } catch (err) {
-      console.error("Verification error:", err);
+      console.error("Verification check error:", err);
       if (showToasts) {
         toast.error("যাচাইকরণে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
       }
@@ -131,17 +130,11 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     }
   };
 
-  const handleOpenChannel = (index: number, url: string) => {
+  const handleOpenChannel = (id: string, url: string) => {
     triggerHaptic("medium");
-    if (index === 0) setHasClickedChannel1(true);
-    if (index === 1) setHasClickedChannel2(true);
+    setClickedMap((prev) => ({ ...prev, [id]: true }));
     openTelegramChat(url);
   };
-
-  // If already verified, allow full access
-  if (isVerified) {
-    return <>{children}</>;
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/90 backdrop-blur-md select-none">
@@ -157,7 +150,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
             {/* Emblem Circle */}
             <div className="relative h-16 w-16 rounded-full border-2 border-[#ff2a3a] bg-gradient-to-b from-[#250508] via-[#140204] to-black p-0.5 shadow-[0_0_20px_rgba(255,42,58,0.85),inset_0_0_12px_rgba(255,42,58,0.6)] flex items-center justify-center">
               
-              {/* Central Stylized Shopping Bag & Cart Graphic */}
+              {/* Central Stylized Shopping Bag Graphic */}
               <div className="relative flex flex-col items-center justify-center">
                 <svg
                   viewBox="0 0 40 40"
@@ -187,7 +180,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
               {/* ManeiShopBD_Bot Text Ribbon Overlay */}
               <div className="absolute -bottom-2 w-[90px] rounded-full bg-gradient-to-r from-[#990011] via-[#e6001a] to-[#990011] py-0.5 px-1 text-center shadow-[0_2px_6px_rgba(0,0,0,0.9),0_0_6px_rgba(255,42,58,0.8)] border border-[#ff4d5a]">
                 <span className="block text-[7.5px] font-black italic tracking-tighter text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] truncate">
-                  ManeiShopBD_Bot
+                  {config.botUsername || "ManeiShopBD_Bot"}
                 </span>
               </div>
             </div>
@@ -222,106 +215,66 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          {/* Two Channel Cards Side-by-Side */}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            
-            {/* 1. Main Channel Card */}
-            <div className={`flex flex-col items-center justify-between rounded-xl border p-2 transition-all ${
-              channel1Joined 
-                ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-                : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)]'
-            }`}>
-              {/* Circular Icon */}
-              <div className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-md ${
-                channel1Joined 
-                  ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 border-emerald-400' 
-                  : 'bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] border-[#ff5566]'
-              }`}>
-                {channel1Joined ? (
-                  <CheckCircle2 className="h-5 w-5 text-white" />
-                ) : (
-                  <TelegramIcon className="h-4 w-4 text-white drop-shadow" />
-                )}
-              </div>
+          {/* Dynamic Channels Grid */}
+          <div className={`mt-3 grid gap-2 ${channels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {channels.map((ch) => {
+              const isJoined = Boolean(joinedMap[ch.id]);
 
-              {/* Title & Subtitle */}
-              <div className="mt-1.5 text-center">
-                <h3 className="text-[11px] font-black tracking-tight leading-none">
-                  <span className="text-white">Main </span>
-                  <span className="text-[#ff2a3a]">Channel</span>
-                </h3>
-                <p className="mt-1 text-[7.5px] font-medium text-slate-300 leading-tight">
-                  All Videos • Updates • News
-                </p>
-              </div>
-
-              {/* Button */}
-              {channel1Joined ? (
-                <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1 px-1.5 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Joined ✅</span>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleOpenChannel(0, REQUIRED_CHANNELS[0].url)}
-                  className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
+              return (
+                <div
+                  key={ch.id}
+                  className={`flex flex-col items-center justify-between rounded-xl border p-2 transition-all ${
+                    isJoined
+                      ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                      : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)]'
+                  }`}
                 >
-                  <TelegramIcon className="h-3 w-3 text-white shrink-0" />
-                  <span className="truncate">Join Channel</span>
-                  <span className="text-[10px]">→</span>
-                </button>
-              )}
-            </div>
+                  {/* Circular Icon */}
+                  <div
+                    className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-md ${
+                      isJoined
+                        ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 border-emerald-400'
+                        : 'bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] border-[#ff5566]'
+                    }`}
+                  >
+                    {isJoined ? (
+                      <CheckCircle2 className="h-5 w-5 text-white" />
+                    ) : (
+                      <TelegramIcon className="h-4 w-4 text-white drop-shadow" />
+                    )}
+                  </div>
 
-            {/* 2. Payment Proof Channel Card */}
-            <div className={`flex flex-col items-center justify-between rounded-xl border p-2 transition-all ${
-              channel2Joined 
-                ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
-                : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)]'
-            }`}>
-              {/* Circular Icon */}
-              <div className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-md ${
-                channel2Joined 
-                  ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 border-emerald-400' 
-                  : 'bg-gradient-to-b from-[#ff3344] via-[#ee1122] to-[#990011] border-[#ff5566]'
-              }`}>
-                {channel2Joined ? (
-                  <CheckCircle2 className="h-5 w-5 text-white" />
-                ) : (
-                  <TelegramIcon className="h-4 w-4 text-white drop-shadow" />
-                )}
-              </div>
+                  {/* Title & Subtitle */}
+                  <div className="mt-1.5 text-center">
+                    <h3 className="text-[11px] font-black tracking-tight leading-none">
+                      <span className="text-white">{ch.name} </span>
+                      <span className="text-[#ff2a3a]">{ch.tag || 'Channel'}</span>
+                    </h3>
+                    <p className="mt-1 text-[7.5px] font-medium text-slate-300 leading-tight">
+                      {ch.subtitle || `@${ch.username}`}
+                    </p>
+                  </div>
 
-              {/* Title & Subtitle */}
-              <div className="mt-1.5 text-center">
-                <h3 className="text-[11px] font-black tracking-tight leading-none">
-                  <span className="text-white">Payment </span>
-                  <span className="text-[#ff2a3a]">Channel</span>
-                </h3>
-                <p className="mt-1 text-[7.5px] font-medium text-slate-300 leading-tight">
-                  Payment • Proofs • Updates
-                </p>
-              </div>
-
-              {/* Button */}
-              {channel2Joined ? (
-                <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1 px-1.5 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Joined ✅</span>
+                  {/* Button */}
+                  {isJoined ? (
+                    <div className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-emerald-600/90 py-1 px-1.5 text-[9.5px] font-black text-white shadow-sm border border-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Joined ✅</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenChannel(ch.id, ch.url)}
+                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
+                    >
+                      <TelegramIcon className="h-3 w-3 text-white shrink-0" />
+                      <span className="truncate">Join Channel</span>
+                      <span className="text-[10px]">→</span>
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleOpenChannel(1, REQUIRED_CHANNELS[1].url)}
-                  className="mt-2 flex w-full items-center justify-center gap-1 rounded-full bg-gradient-to-b from-[#ff3b4b] via-[#e60d21] to-[#990011] py-1 px-1.5 text-[9.5px] font-black text-white shadow-[0_3px_8px_rgba(255,42,58,0.7),inset_0_1px_1px_rgba(255,255,255,0.5)] border border-[#ff5566] hover:brightness-110 active:scale-95 transition"
-                >
-                  <TelegramIcon className="h-3 w-3 text-white shrink-0" />
-                  <span className="truncate">Join Channel</span>
-                  <span className="text-[10px]">→</span>
-                </button>
-              )}
-            </div>
+              );
+            })}
           </div>
 
           {/* Admin Tip Notice if any */}

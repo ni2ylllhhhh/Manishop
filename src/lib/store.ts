@@ -14,6 +14,25 @@ export const defaultConfig: AppConfig = {
   imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
   adminPinHash: "48e6f958531e543731746fd0a4fcba173e2ae226d60eb19a5d021be3c29f7a3e",
   allowDemoLogin: true,
+  forceChannelVerification: true,
+  requiredChannels: [
+    {
+      id: "main",
+      name: "Main",
+      tag: "Channel",
+      subtitle: "All Videos • Updates • News",
+      username: "jgjghjghh687",
+      url: "https://t.me/jgjghjghh687"
+    },
+    {
+      id: "payment",
+      name: "Payment",
+      tag: "Channel",
+      subtitle: "Payment • Proofs • Updates",
+      username: "Earning_Money_Lob",
+      url: "https://t.me/Earning_Money_Lob"
+    }
+  ],
   adSlots: [
     { id: "slot1", title: "AD SLOT 1", zone: "10635966", reward: 0.05 },
     { id: "slot2", title: "AD SLOT 2", zone: "10635966", reward: 0.05 }
@@ -278,6 +297,13 @@ function loadInitialData(): AppDatabase {
     
     // Ensure all 4 tasks use the requested link
     mergedConfig.tasks = defaultConfig.tasks;
+
+    if (!Array.isArray(mergedConfig.requiredChannels) || mergedConfig.requiredChannels.length === 0) {
+      mergedConfig.requiredChannels = defaultConfig.requiredChannels;
+    }
+    if (typeof mergedConfig.forceChannelVerification !== 'boolean') {
+      mergedConfig.forceChannelVerification = true;
+    }
 
     return {
       ...deepClone(initialDatabase),

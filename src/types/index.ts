@@ -78,6 +78,15 @@ export interface EarningLog {
   createdAt: string;
 }
 
+export interface RequiredChannel {
+  id: string;
+  name: string;
+  tag: string;
+  subtitle: string;
+  username: string;
+  url: string;
+}
+
 export interface AppConfig {
   appName: string;
   botUsername: string;
@@ -87,6 +96,8 @@ export interface AppConfig {
   adminPassword?: string;
   adminPinHash?: string;
   allowDemoLogin: boolean;
+  forceChannelVerification?: boolean;
+  requiredChannels?: RequiredChannel[];
   adSlots: AdSlot[];
   adMinSeconds: number;
   adMaxMinutes: number;

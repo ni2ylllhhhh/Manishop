@@ -21,7 +21,12 @@ import {
   Save,
   KeyRound,
   RefreshCw,
-  Radio
+  Radio,
+  Send,
+  ShieldAlert,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { useAppStore } from '../contexts/AuthContext';
@@ -36,11 +41,12 @@ import {
   subscribeAllReferrals,
   fetchAllUsers
 } from '../lib/firebase';
-import type { AppConfig, User, Withdrawal } from '../types';
+import type { AppConfig, User, Withdrawal, RequiredChannel } from '../types';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
+  { id: 'channels', label: 'Telegram Channels' },
   { id: 'withdrawals', label: 'Withdrawals' },
   { id: 'ads', label: 'Ad Slots' },
   { id: 'tasks', label: 'Tasks' },
@@ -86,6 +92,24 @@ export function Admin() {
   // Live Firebase Sync States
   const [syncing, setSyncing] = useState(false);
   const [liveUserCount, setLiveUserCount] = useState<number | null>(null);
+
+  // Telegram Channel Management States
+  const [editingChannel, setEditingChannel] = useState<RequiredChannel | null>(null);
+  const [isAddingChannel, setIsAddingChannel] = useState(false);
+  const [newChannelData, setNewChannelData] = useState<{
+    name: string;
+    tag: string;
+    subtitle: string;
+    username: string;
+    url: string;
+  }>({
+    name: '',
+    tag: 'Channel',
+    subtitle: '',
+    username: '',
+    url: ''
+  });
+  const [channelTestStatus, setChannelTestStatus] = useState<Record<string, { loading: boolean; ok?: boolean; message?: string }>>({});
 
   // Subscribe to real-time Firebase users, withdrawals, and referrals
   useEffect(() => {
@@ -249,6 +273,79 @@ export function Admin() {
     const updatedCfg = appStore.get().config;
     syncConfigToFirebase(updatedCfg);
     toast.success("Settings updated & synced!");
+  };
+
+  const testChannelBot = async (ch: RequiredChannel) => {
+    if (!ch.username) return;
+    setChannelTestStatus((prev) => ({ ...prev, [ch.id]: { loading: true } }));
+    const token = cfg.botToken;
+    try {
+      const cleanUser = ch.username.replace(/^@/, '').trim();
+      const res = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=@${encodeURIComponent(cleanUser)}`);
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setChannelTestStatus((prev) => ({
+          ...prev,
+          [ch.id]: { loading: false, ok: true, message: `সংযুক্ত: "${data.result?.title}"` }
+        }));
+        toast.success(`চ্যানেল কানেক্টেড: ${data.result?.title}`);
+      } else {
+        setChannelTestStatus((prev) => ({
+          ...prev,
+          [ch.id]: { loading: false, ok: false, message: data.description || "অ্যাক্সেস করা যায়নি" }
+        }));
+        toast.error(`এরর: ${data.description}`);
+      }
+    } catch (e: any) {
+      setChannelTestStatus((prev) => ({
+        ...prev,
+        [ch.id]: { loading: false, ok: false, message: e.message || "নেটওয়ার্ক ত্রুটি" }
+      }));
+      toast.error("নেটওয়ার্ক ত্রুটি");
+    }
+  };
+
+  const handleSaveChannel = (channel: RequiredChannel) => {
+    const list = [...(cfg.requiredChannels || [])];
+    const idx = list.findIndex((c) => c.id === channel.id);
+    if (idx !== -1) {
+      list[idx] = channel;
+    } else {
+      list.push(channel);
+    }
+    updateConfig({ requiredChannels: list });
+    setEditingChannel(null);
+    toast.success("চ্যানেল সফলভাবে আপডেট হয়েছে!");
+  };
+
+  const handleCreateChannel = () => {
+    if (!newChannelData.name.trim() || !newChannelData.username.trim()) {
+      toast.error("নাম ও ইউজারনেম আবশ্যক!");
+      return;
+    }
+    const cleanUsername = newChannelData.username.replace(/^@/, '').trim();
+    const cleanUrl = newChannelData.url.trim() || `https://t.me/${cleanUsername}`;
+    const newChan: RequiredChannel = {
+      id: generateId("ch"),
+      name: newChannelData.name.trim(),
+      tag: newChannelData.tag.trim() || "Channel",
+      subtitle: newChannelData.subtitle.trim() || "Updates & News",
+      username: cleanUsername,
+      url: cleanUrl
+    };
+
+    const list = [...(cfg.requiredChannels || []), newChan];
+    updateConfig({ requiredChannels: list });
+    setIsAddingChannel(false);
+    setNewChannelData({ name: '', tag: 'Channel', subtitle: '', username: '', url: '' });
+    toast.success("নতুন চ্যানেল সফলভাবে যুক্ত হয়েছে!");
+  };
+
+  const handleDeleteChannel = (id: string) => {
+    if (!confirm("আপনি কি নিশ্চিত এই চ্যানেলটি মুছে ফেলতে চান?")) return;
+    const list = (cfg.requiredChannels || []).filter((c) => c.id !== id);
+    updateConfig({ requiredChannels: list });
+    toast.info("চ্যানেল মুছে ফেলা হয়েছে!");
   };
 
   const handleChangePin = async (e: React.FormEvent) => {
@@ -516,6 +613,166 @@ export function Admin() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* TELEGRAM CHANNELS MANAGEMENT */}
+        {activeTab === 'channels' && (
+          <SectionCard title="Telegram Verification Channels & Bot Surveillance">
+            {/* Master Force Verification Switch */}
+            <div className="mb-4 rounded-2xl bg-slate-50 p-4 border border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-brand-500" />
+                    <h4 className="text-xs font-bold text-slate-800">
+                      Force Channel Verification (বাধ্যতামূলক চ্যানেল ভেরিফিকেশন)
+                    </h4>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      cfg.forceChannelVerification !== false
+                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {cfg.forceChannelVerification !== false ? 'Active (চালু)' : 'Disabled (বন্ধ)'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    এটি চালু থাকলে ইউজার সবগুলো চ্যানেলে জয়েন না করা পর্যন্ত ওয়েবসাইটের কোনো ফিচার ব্যবহার করতে পারবে না। এছাড়া ২৪/৭ অটো নজরদারি সচল থাকবে।
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateConfig({ forceChannelVerification: cfg.forceChannelVerification === false })}
+                  className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition shadow-sm ${
+                    cfg.forceChannelVerification !== false
+                      ? 'bg-rose-500 hover:bg-rose-600'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  {cfg.forceChannelVerification !== false ? 'Disable Gate' : 'Enable Gate'}
+                </button>
+              </div>
+            </div>
+
+            {/* Channels Header & Add Button */}
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-700">
+                  Required Channels List ({cfg.requiredChannels?.length || 0})
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  নিচের চ্যানেলগুলোতে ইউজারকে বাধ্যতামূলক জয়েন করতে হবে
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddingChannel(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Channel</span>
+              </button>
+            </div>
+
+            {/* Channels List */}
+            <div className="space-y-3">
+              {(cfg.requiredChannels || []).map((ch) => {
+                const testStatus = channelTestStatus[ch.id];
+
+                return (
+                  <div
+                    key={ch.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-white p-3.5 border border-slate-200 shadow-xs hover:border-slate-300 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-red-500 to-red-700 text-white shadow-xs">
+                        <Send className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h5 className="truncate text-xs font-bold text-slate-800">
+                            {ch.name} <span className="text-brand-500">{ch.tag || 'Channel'}</span>
+                          </h5>
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600">
+                            @{ch.username}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-slate-400 mt-0.5">
+                          {ch.subtitle || 'No subtitle'}
+                        </p>
+                        <a
+                          href={ch.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-brand-600 hover:underline"
+                        >
+                          <span>{ch.url}</span>
+                          <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Actions and Status */}
+                    <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                      {/* Test Bot Connection Button */}
+                      <button
+                        type="button"
+                        disabled={testStatus?.loading}
+                        onClick={() => testChannelBot(ch)}
+                        className="flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition"
+                        title="বটের চ্যানেল অ্যাক্সেস টেস্ট করুন"
+                      >
+                        {testStatus?.loading ? (
+                          <RefreshCw className="h-3 w-3 animate-spin text-slate-500" />
+                        ) : testStatus?.ok ? (
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Radio className="h-3 w-3 text-brand-500" />
+                        )}
+                        <span>{testStatus?.loading ? 'টেস্ট হচ্ছে...' : 'Test Bot'}</span>
+                      </button>
+
+                      {/* Edit Button */}
+                      <button
+                        type="button"
+                        onClick={() => setEditingChannel({ ...ch })}
+                        className="flex items-center gap-1 rounded-lg bg-brand-50 hover:bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700 transition"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                        <span>Edit</span>
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChannel(ch.id)}
+                        className="flex items-center gap-1 rounded-lg bg-rose-50 hover:bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-600 transition"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {(cfg.requiredChannels || []).length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
+                  <p className="text-xs">কোনো চ্যানেল সেট করা হয়নি। 'Add Channel' বাটনে চাপ দিয়ে চ্যানেল যুক্ত করুন।</p>
+                </div>
+              )}
+            </div>
+
+            {/* Instruction Callout for Admin */}
+            <div className="mt-4 rounded-xl bg-amber-50 p-3 border border-amber-200/80">
+              <div className="flex gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-800 leading-relaxed">
+                  <span className="font-bold">গুরুত্বপূর্ণ নির্দেশনা:</span> বটের মাধ্যমে স্বয়ংক্রিয়ভাবে মেম্বারশিপ যাচাই ও ২৪/৭ নজরদারির জন্য আপনার টেলিগ্রাম বট{' '}
+                  <span className="font-bold font-mono text-amber-900">@{cfg.botUsername}</span>-কে প্রতিটি চ্যানেলে অবশ্যই{' '}
+                  <span className="font-bold underline">Administrator (অ্যাডমিন)</span> হিসেবে অ্যাড করতে হবে।
+                </div>
+              </div>
             </div>
           </SectionCard>
         )}
@@ -1328,6 +1585,254 @@ export function Admin() {
                   className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
                 >
                   Save Withdrawal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT CHANNEL MODAL */}
+      {editingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Edit Required Channel</h3>
+                <p className="text-[11px] text-slate-400">
+                  @{editingChannel.username}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingChannel(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Channel Name (নাম)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChannel.name}
+                    onChange={(e) =>
+                      setEditingChannel({ ...editingChannel, name: e.target.value })
+                    }
+                    placeholder="e.g. Main"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Tag / Type
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChannel.tag || ''}
+                    onChange={(e) =>
+                      setEditingChannel({ ...editingChannel, tag: e.target.value })
+                    }
+                    placeholder="e.g. Channel"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Subtitle (সাবটাইটেল)
+                </label>
+                <input
+                  type="text"
+                  value={editingChannel.subtitle || ''}
+                  onChange={(e) =>
+                    setEditingChannel({ ...editingChannel, subtitle: e.target.value })
+                  }
+                  placeholder="e.g. All Videos • Updates • News"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Telegram Username (@ ছাড়া)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono">@</span>
+                  <input
+                    type="text"
+                    value={editingChannel.username}
+                    onChange={(e) =>
+                      setEditingChannel({
+                        ...editingChannel,
+                        username: e.target.value.replace(/^@/, '').trim()
+                      })
+                    }
+                    placeholder="jgjghjghh687"
+                    className="h-9 w-full rounded-xl border border-slate-200 pl-7 pr-3 text-xs font-mono outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Full Telegram URL (লিংক)
+                </label>
+                <input
+                  type="url"
+                  value={editingChannel.url}
+                  onChange={(e) =>
+                    setEditingChannel({ ...editingChannel, url: e.target.value.trim() })
+                  }
+                  placeholder="https://t.me/jgjghjghh687"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingChannel(null)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveChannel(editingChannel)}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Save Channel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CHANNEL MODAL */}
+      {isAddingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Add Required Channel</h3>
+                <p className="text-[11px] text-slate-400">
+                  নতুন চ্যানেল যুক্ত করুন যা ইউজারদের জন্য বাধ্যতামূলক হবে
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAddingChannel(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Channel Name (নাম)
+                  </label>
+                  <input
+                    type="text"
+                    value={newChannelData.name}
+                    onChange={(e) =>
+                      setNewChannelData({ ...newChannelData, name: e.target.value })
+                    }
+                    placeholder="e.g. Support"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Tag / Type
+                  </label>
+                  <input
+                    type="text"
+                    value={newChannelData.tag}
+                    onChange={(e) =>
+                      setNewChannelData({ ...newChannelData, tag: e.target.value })
+                    }
+                    placeholder="e.g. Channel"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Subtitle (সাবটাইটেল)
+                </label>
+                <input
+                  type="text"
+                  value={newChannelData.subtitle}
+                  onChange={(e) =>
+                    setNewChannelData({ ...newChannelData, subtitle: e.target.value })
+                  }
+                  placeholder="e.g. Help • Support • Updates"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Telegram Username (@ ছাড়া)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono">@</span>
+                  <input
+                    type="text"
+                    value={newChannelData.username}
+                    onChange={(e) => {
+                      const u = e.target.value.replace(/^@/, '').trim();
+                      setNewChannelData({
+                        ...newChannelData,
+                        username: u,
+                        url: u ? `https://t.me/${u}` : newChannelData.url
+                      });
+                    }}
+                    placeholder="ManeiShopBD_Support"
+                    className="h-9 w-full rounded-xl border border-slate-200 pl-7 pr-3 text-xs font-mono outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Full Telegram URL (লিংক)
+                </label>
+                <input
+                  type="url"
+                  value={newChannelData.url}
+                  onChange={(e) =>
+                    setNewChannelData({ ...newChannelData, url: e.target.value.trim() })
+                  }
+                  placeholder="https://t.me/ManeiShopBD_Support"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingChannel(false)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateChannel}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Create Channel
                 </button>
               </div>
             </div>

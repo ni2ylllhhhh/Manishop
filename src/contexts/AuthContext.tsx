@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { toast } from 'sonner';
 import type { User, AppConfig, AdSlot, Task, PendingAction } from '../types';
 import { appStore, loginOrRegisterUser, creditUserEarning, getTodayDateString } from '../lib/store';
-import { subscribeToFirebaseUser } from '../lib/firebase';
+import { subscribeToFirebaseUser, subscribeConfig, syncUserToFirebase } from '../lib/firebase';
 import {
   initTelegramWebApp,
   getTelegramInitData,
@@ -190,6 +190,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return () => unsubscribe();
   }, [sessionTid]);
+
+  // Real-time listener for remote AppConfig updates from Firebase RTDB
+  useEffect(() => {
+    const unsub = subscribeConfig((remoteCfg) => {
+      if (remoteCfg && typeof remoteCfg === 'object') {
+        appStore.update((d) => {
+          d.config = { ...d.config, ...remoteCfg };
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // 24/7 Channel Membership Background Surveillance
+  // Automatically detects if a previously verified user leaves any required channel!
+  useEffect(() => {
+    if (!currentUser || !currentUser.verified || config.forceChannelVerification === false) {
+      return;
+    }
+
+    const channels = config.requiredChannels || [];
+    if (channels.length === 0) return;
+
+    const token = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
+    if (!token) return;
+
+    const checkChannelStatus = async () => {
+      for (const ch of channels) {
+        if (!ch.username) continue;
+        try {
+          const res = await fetch(
+            `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${encodeURIComponent(ch.username)}&user_id=${encodeURIComponent(currentUser.telegramId)}`
+          );
+          const data = await res.json().catch(() => ({}));
+          if (data.ok) {
+            const st = data.result?.status;
+            // 'left' or 'kicked' means the user left/unjoined the channel
+            if (st === 'left' || st === 'kicked') {
+              console.warn(`[Surveillance] User ${currentUser.telegramId} left channel @${ch.username}! Revoking access.`);
+              appStore.update((draft) => {
+                const u = draft.users[currentUser.telegramId];
+                if (u) {
+                  u.verified = false;
+                }
+              });
+              syncUserToFirebase({ ...currentUser, verified: false });
+              triggerHaptic('error');
+              toast.error(`⚠️ আপনি '${ch.name}' চ্যানেল ত্যাগ করেছেন! ওয়েবসাইট ব্যবহার করার জন্য আবার জয়েন করে ভেরিফাই করুন।`);
+              break;
+            }
+          }
+        } catch {
+          // Ignore network glitch
+        }
+      }
+    };
+
+    // Check immediately when user switches back to the tab/app
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkChannelStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // Periodic surveillance check every 35 seconds
+    const interval = setInterval(checkChannelStatus, 35000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [currentUser?.telegramId, currentUser?.verified, config.forceChannelVerification, config.requiredChannels, config.botToken]);
 
   const handleDemoLogin = useCallback(async () => {
     setStatus('verifying');
