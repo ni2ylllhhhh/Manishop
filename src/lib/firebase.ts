@@ -146,12 +146,47 @@ export function subscribeToFirebaseUser(
 
 /**
  * Delete a user from Firebase Realtime Database
+ * Also removes all their withdrawal requests and referral entries
  */
 export async function deleteUserFromFirebase(telegramId: string): Promise<boolean> {
   if (!telegramId) return false;
   try {
+    // 1. Remove the user node
     const userRef = rtdbRef(rtdb, `users/${telegramId}`);
     await remove(userRef);
+
+    // 2. Remove all withdrawal requests created by this user
+    try {
+      const wdsRef = rtdbRef(rtdb, "withdrawals");
+      const snapW = await get(wdsRef);
+      if (snapW.exists()) {
+        const allWds = snapW.val();
+        for (const [key, val] of Object.entries(allWds)) {
+          if ((val as any)?.telegramId === telegramId) {
+            await remove(rtdbRef(rtdb, `withdrawals/${key}`));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Firebase RTDB] Error deleting user withdrawals:", e);
+    }
+
+    // 3. Remove all referral documents where this user is the referred person
+    try {
+      const refsRef = rtdbRef(rtdb, "referrals");
+      const snapR = await get(refsRef);
+      if (snapR.exists()) {
+        const allRefs = snapR.val();
+        for (const [key, val] of Object.entries(allRefs)) {
+          if ((val as any)?.referredTelegramId === telegramId) {
+            await remove(rtdbRef(rtdb, `referrals/${key}`));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Firebase RTDB] Error deleting user referrals:", e);
+    }
+
     return true;
   } catch (err) {
     console.warn("[Firebase RTDB] deleteUserFromFirebase error:", err);

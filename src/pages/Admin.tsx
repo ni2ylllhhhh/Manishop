@@ -178,7 +178,7 @@ export function Admin() {
 
   const handleDeleteUser = async (u: User) => {
     const displayName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || u.telegramId;
-    if (!window.confirm(`⚠️ আপনি কি নিশ্চিত ইউজার "${displayName}" (TID: ${u.telegramId})-কে ফায়ারবেস ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলতে চান?\n\nমুছে ফেললে ইউজার আর লগইন করতে পারবে না এবং ফায়ারবেস থেকে সব ডাটা ডিলিট হয়ে যাবে!`)) {
+    if (!window.confirm(`⚠️ আপনি কি নিশ্চিত ইউজার "${displayName}" (TID: ${u.telegramId})-কে ফায়ারবেস থেকে মুছে ফেলতে চান?\n\nমুছে ফেললে ফায়ারবেস থেকে তার সমস্ত তথ্য, ব্যালেন্স ও উইথড্রয়াল মুছে যাবে। পরবর্তীতে সে আবার সাইটে প্রবেশ করলে তাকে সম্পূর্ণ নতুন ইউজার হিসেবে গণ্য করা হবে।`)) {
       return;
     }
 
@@ -189,6 +189,7 @@ export function Admin() {
       // 2. Remove from local store immediately
       appStore.update((d) => {
         delete d.users[u.telegramId];
+        d.withdrawals = d.withdrawals.filter((w) => w.telegramId !== u.telegramId);
       });
 
       toast.success(`ইউজার "${displayName}" ফায়ারবেস থেকে সফলভাবে মুছে ফেলা হয়েছে!`);

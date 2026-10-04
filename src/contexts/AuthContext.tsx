@@ -168,9 +168,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!remote) {
         // User was deleted by admin from Firebase
         localStorage.removeItem(STORAGE_TID);
+        appStore.update((draft) => {
+          delete draft.users[sessionTid];
+        });
         setSessionTid(null);
         setStatus('error');
-        setError('আপনার অ্যাকাউন্টটি অ্যাডমিন প্যানেল থেকে মুছে ফেলা হয়েছে।');
+        setError('আপনার পূর্বের একাউন্টটি মুছে ফেলা হয়েছে। পুনরায় প্রবেশ করতে "Try Again" চাপলে আপনাকে সম্পূর্ণ নতুন ইউজার হিসেবে গ্রহণ করা হবে।');
         return;
       }
 

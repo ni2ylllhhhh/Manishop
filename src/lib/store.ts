@@ -339,10 +339,15 @@ export async function loginOrRegisterUser(
   }
 
   appStore.update((db) => {
-    let existing = db.users[tid];
-    if (!existing && remoteUser) {
+    // If user does not exist in Firebase (e.g. deleted by admin or brand new),
+    // stale cached user data must be purged so they register completely fresh!
+    let existing: User | null = null;
+    if (remoteUser && remoteUser.telegramId) {
       existing = { ...remoteUser };
       db.users[tid] = existing;
+    } else {
+      delete db.users[tid];
+      existing = null;
     }
 
     if (cleanReferrer && remoteParent) {
