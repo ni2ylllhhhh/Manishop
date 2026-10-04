@@ -306,25 +306,36 @@ export async function loginOrRegisterUser(
   let user: User;
   let parentToSync: User | null = null;
   let refToSync: Referral | null = null;
+  let grandParentToSync: User | null = null;
+  let grandRefToSync: Referral | null = null;
   const messagesToSend: Array<{ chatId: string | number; text: string }> = [];
 
   // Check if we already have the user cached locally in appStore
   const localExisting = appStore.get().users[tid];
 
-  // Always fetch latest state from Firebase with a fast 1-second timeout
+  // Fetch latest state of this user from Firebase
   let remoteUser: User | null = null;
   try {
-    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3000));
     remoteUser = await Promise.race([fetchUserFromFirebase(tid), timeoutPromise]);
   } catch {}
 
   const cleanReferrer = referredBy && String(referredBy).trim() !== tid ? String(referredBy).trim() : null;
   let remoteParent: User | null = null;
-  if (cleanReferrer && !appStore.get().users[cleanReferrer]) {
+  let remoteGrandParent: User | null = null;
+
+  if (cleanReferrer) {
     try {
-      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3500));
       remoteParent = await Promise.race([fetchUserFromFirebase(cleanReferrer), timeoutPromise]);
     } catch {}
+
+    if (remoteParent?.referredBy && remoteParent.referredBy !== tid && remoteParent.referredBy !== cleanReferrer) {
+      try {
+        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2500));
+        remoteGrandParent = await Promise.race([fetchUserFromFirebase(remoteParent.referredBy), timeoutPromise]);
+      } catch {}
+    }
   }
 
   appStore.update((db) => {
@@ -334,8 +345,18 @@ export async function loginOrRegisterUser(
       db.users[tid] = existing;
     }
 
-    if (cleanReferrer && remoteParent && !db.users[cleanReferrer]) {
-      db.users[cleanReferrer] = { ...remoteParent };
+    if (cleanReferrer && remoteParent) {
+      db.users[cleanReferrer] = {
+        ...(db.users[cleanReferrer] || {}),
+        ...remoteParent
+      };
+    }
+
+    if (remoteGrandParent && remoteGrandParent.telegramId) {
+      db.users[remoteGrandParent.telegramId] = {
+        ...(db.users[remoteGrandParent.telegramId] || {}),
+        ...remoteGrandParent
+      };
     }
 
     const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
@@ -511,14 +532,17 @@ export async function loginOrRegisterUser(
         grandParent.lifetimeEarned = Number((grandParent.lifetimeEarned + db.config.level2Bonus).toFixed(2));
         grandParent.referralEarned = Number((grandParent.referralEarned + db.config.level2Bonus).toFixed(2));
 
-        db.referrals.unshift({
+        const grandRef: Referral = {
           id: generateId("ref"),
           referrerTelegramId: grandParent.telegramId,
           referredTelegramId: tid,
           level: 2,
           bonus: db.config.level2Bonus,
           createdAt: now
-        });
+        };
+        db.referrals.unshift(grandRef);
+        grandRefToSync = { ...grandRef };
+        grandParentToSync = { ...grandParent };
 
         messagesToSend.push({
           chatId: grandParent.telegramId,
@@ -535,16 +559,14 @@ export async function loginOrRegisterUser(
     user = newUser;
   });
 
-  // 1. Sync to Firebase in background
-  if (user!) {
-    syncUserToFirebase(user!);
-  }
-  if (parentToSync) {
-    syncUserToFirebase(parentToSync);
-  }
-  if (refToSync) {
-    syncReferralToFirebase(refToSync);
-  }
+  // 1. Sync to Firebase
+  await Promise.allSettled([
+    user! ? syncUserToFirebase(user!) : Promise.resolve(),
+    parentToSync ? syncUserToFirebase(parentToSync) : Promise.resolve(),
+    refToSync ? syncReferralToFirebase(refToSync) : Promise.resolve(),
+    grandParentToSync ? syncUserToFirebase(grandParentToSync) : Promise.resolve(),
+    grandRefToSync ? syncReferralToFirebase(grandRefToSync) : Promise.resolve()
+  ]);
 
   // 2. Dispatch all pending bot messages with proper token
   const token = appStore.get().config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";

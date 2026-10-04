@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { toast } from 'sonner';
 import type { User, AppConfig, AdSlot, Task, PendingAction } from '../types';
 import { appStore, loginOrRegisterUser, creditUserEarning, getTodayDateString } from '../lib/store';
-import { subscribeToFirebaseUser, subscribeConfig, syncUserToFirebase } from '../lib/firebase';
+import { subscribeToFirebaseUser, subscribeConfig, syncUserToFirebase, subscribeAllReferrals } from '../lib/firebase';
 import {
   initTelegramWebApp,
   getTelegramInitData,
@@ -198,6 +198,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (remoteCfg && typeof remoteCfg === 'object') {
         appStore.update((d) => {
           d.config = { ...d.config, ...remoteCfg };
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time listener for referrals tracking
+  useEffect(() => {
+    const unsub = subscribeAllReferrals((remoteRefs) => {
+      if (Array.isArray(remoteRefs)) {
+        appStore.update((d) => {
+          d.referrals = remoteRefs;
         });
       }
     });

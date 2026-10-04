@@ -250,25 +250,32 @@ export function getTelegramUser(): TelegramWebAppUser | null {
 }
 
 export function getReferralStartParam(): string | null {
-  // 1. Check WebApp start_param
-  const tgParam = getTelegramWebApp()?.initDataUnsafe?.start_param;
-  if (tgParam && String(tgParam).trim()) {
-    const val = String(tgParam).trim();
-    try { sessionStorage.setItem('c2c_referral_start_param', val); } catch {}
+  const sanitize = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const clean = String(raw).trim().replace(/^(ref_|c2c_|r_)/i, '');
+    return clean || null;
+  };
+
+  const persist = (val: string | null): string | null => {
+    if (!val) return null;
+    try {
+      sessionStorage.setItem('c2c_referral_start_param', val);
+      localStorage.setItem('c2c_referral_start_param', val);
+    } catch {}
     return val;
-  }
+  };
+
+  // 1. Check WebApp start_param
+  const tgParam = sanitize(getTelegramWebApp()?.initDataUnsafe?.start_param);
+  if (tgParam) return persist(tgParam);
 
   // 2. Parse from initData query string
   try {
     const rawInit = getTelegramWebApp()?.initData;
     if (rawInit) {
       const parsed = new URLSearchParams(rawInit);
-      const sp = parsed.get('start_param');
-      if (sp && sp.trim()) {
-        const val = sp.trim();
-        try { sessionStorage.setItem('c2c_referral_start_param', val); } catch {}
-        return val;
-      }
+      const sp = sanitize(parsed.get('start_param'));
+      if (sp) return persist(sp);
     }
   } catch {}
 
@@ -276,17 +283,14 @@ export function getReferralStartParam(): string | null {
   if (typeof window !== 'undefined') {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const sp =
+      const sp = sanitize(
         urlParams.get('tgWebAppStartParam') ||
         urlParams.get('startapp') ||
         urlParams.get('start') ||
         urlParams.get('ref') ||
-        urlParams.get('referrer');
-      if (sp && sp.trim()) {
-        const val = sp.trim();
-        try { sessionStorage.setItem('c2c_referral_start_param', val); } catch {}
-        return val;
-      }
+        urlParams.get('referrer')
+      );
+      if (sp) return persist(sp);
 
       // 4. Check hash fragment (#tgWebAppStartParam=xxx)
       if (window.location.hash) {
@@ -294,21 +298,20 @@ export function getReferralStartParam(): string | null {
           ? window.location.hash.substring(1)
           : window.location.hash;
         const hashParams = new URLSearchParams(cleanHash);
-        const hashSp =
+        const hashSp = sanitize(
           hashParams.get('tgWebAppStartParam') ||
           hashParams.get('startapp') ||
           hashParams.get('start') ||
-          hashParams.get('ref');
-        if (hashSp && hashSp.trim()) {
-          const val = hashSp.trim();
-          try { sessionStorage.setItem('c2c_referral_start_param', val); } catch {}
-          return val;
-        }
+          hashParams.get('ref')
+        );
+        if (hashSp) return persist(hashSp);
       }
 
-      // 5. Check sessionStorage cache
-      const cached = sessionStorage.getItem('c2c_referral_start_param');
-      if (cached && cached.trim()) return cached.trim();
+      // 5. Check persistent storage cache
+      const cached =
+        sanitize(sessionStorage.getItem('c2c_referral_start_param')) ||
+        sanitize(localStorage.getItem('c2c_referral_start_param'));
+      if (cached) return cached;
     } catch {}
   }
 

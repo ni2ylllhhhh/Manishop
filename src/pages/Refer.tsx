@@ -19,11 +19,24 @@ export function Refer() {
   const { l1, l2 } = useMemo(() => {
     if (!user) return { l1: [], l2: [] };
     const myRefs = db.referrals.filter((r) => r.referrerTelegramId === user.telegramId);
+
+    const existingRefIds = new Set(myRefs.filter(r => r.level === 1).map(r => r.referredTelegramId));
+    const extraL1 = Object.values(db.users)
+      .filter((u) => u.referredBy === user.telegramId && !existingRefIds.has(u.telegramId))
+      .map((u) => ({
+        id: `ref_u_${u.telegramId}`,
+        referrerTelegramId: user.telegramId,
+        referredTelegramId: u.telegramId,
+        level: 1 as const,
+        bonus: config.referralBonus,
+        createdAt: u.createdAt
+      }));
+
     return {
-      l1: myRefs.filter((r) => r.level === 1),
+      l1: [...myRefs.filter((r) => r.level === 1), ...extraL1],
       l2: myRefs.filter((r) => r.level === 2)
     };
-  }, [db.referrals, user]);
+  }, [db.referrals, db.users, user, config.referralBonus]);
 
   if (!user) return null;
 
