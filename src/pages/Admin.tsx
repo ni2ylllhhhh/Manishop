@@ -1252,6 +1252,12 @@ export function Admin() {
                   onChange={(v) => updateConfig({ minWithdraw: v })}
                 />
                 <NumberConfig
+                  label="New User Welcome Bonus ($)"
+                  step={0.01}
+                  value={cfg.welcomeBonus ?? 0.01}
+                  onChange={(v) => updateConfig({ welcomeBonus: v })}
+                />
+                <NumberConfig
                   label="Required Referrals for Withdrawal"
                   step={1}
                   value={cfg.minReferralsForWithdraw}

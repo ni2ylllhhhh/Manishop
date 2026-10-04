@@ -49,6 +49,7 @@ export const defaultConfig: AppConfig = {
   ],
   referralBonus: 0.5,
   level2Bonus: 0.1,
+  welcomeBonus: 0.01,
   minWithdraw: 5,
   minReferralsForWithdraw: 15,
   withdrawAmounts: [5, 10, 15, 30, 60, 100]
@@ -211,36 +212,49 @@ export function escapeHtml(str: string): string {
 export async function sendTelegramBotMessage(
   botToken: string,
   chatId: string | number,
-  text: string
+  text: string,
+  replyMarkup?: any
 ): Promise<boolean> {
-  if (!botToken || !chatId) return false;
+  const token = botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  const cid = String(chatId).trim();
+  if (!token || !cid || !/^-?\d+$/.test(cid)) return false;
+
+  const payload: any = {
+    chat_id: cid,
+    text,
+    parse_mode: "HTML"
+  };
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+
   try {
-    let res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    let res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML"
-      })
+      body: JSON.stringify(payload)
     });
     let data = await res.json().catch(() => ({}));
     if (!data.ok) {
       console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
-      res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      const fallbackPayload: any = {
+        chat_id: cid,
+        text: text.replace(/<[^>]*>/g, "")
+      };
+      if (replyMarkup) {
+        fallbackPayload.reply_markup = replyMarkup;
+      }
+      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text.replace(/<[^>]*>/g, "")
-        })
+        body: JSON.stringify(fallbackPayload)
       });
       data = await res.json().catch(() => ({}));
     }
     if (data.ok) {
-      console.log(`[Telegram Bot API] Message sent successfully to ${chatId}`);
+      console.log(`[Telegram Bot API] Message sent successfully to ${cid}`);
     } else {
-      console.warn(`[Telegram Bot API] Message delivery failed for ${chatId}:`, data);
+      console.warn(`[Telegram Bot API] Message delivery failed for ${cid}:`, data);
     }
     return Boolean(data.ok);
   } catch (err) {
@@ -308,7 +322,7 @@ export async function loginOrRegisterUser(
   let refToSync: Referral | null = null;
   let grandParentToSync: User | null = null;
   let grandRefToSync: Referral | null = null;
-  const messagesToSend: Array<{ chatId: string | number; text: string }> = [];
+  const messagesToSend: Array<{ chatId: string | number; text: string; replyMarkup?: any }> = [];
 
   // Check if we already have the user cached locally in appStore
   const localExisting = appStore.get().users[tid];
@@ -442,9 +456,41 @@ export async function loginOrRegisterUser(
         messagesToSend.push({ chatId: parentUser.telegramId, text: referrerText });
       }
 
+      // Check if existing user never received welcome message or bonus
+      if (!existing.welcomeSent) {
+        existing.welcomeSent = true;
+        const wb = typeof db.config.welcomeBonus === 'number' ? db.config.welcomeBonus : 0.01;
+        if (existing.balance === 0 && existing.lifetimeEarned === 0 && wb > 0) {
+          existing.balance = Number((existing.balance + wb).toFixed(2));
+          existing.lifetimeEarned = Number((existing.lifetimeEarned + wb).toFixed(2));
+          existing.todayEarned = Number((existing.todayEarned + wb).toFixed(2));
+          db.logs.unshift({
+            id: generateId("log"),
+            telegramId: tid,
+            kind: "task",
+            label: "🎁 সাইনআপ ওয়েলকাম বোনাস",
+            amount: wb,
+            createdAt: now
+          });
+        }
+        const botUser = (db.config.botUsername || "ManeiShopBD_Bot").replace(/^@/, '');
+        const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$${(wb > 0 ? wb : 0.01).toFixed(2)} USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $${existing.balance.toFixed(2)} USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$${db.config.referralBonus.toFixed(2)} USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $${db.config.minWithdraw} USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+        messagesToSend.push({
+          chatId: tid,
+          text: welcomeMsg,
+          replyMarkup: {
+            inline_keyboard: [
+              [{ text: "🚀 Open ManeiShop App", url: `https://t.me/${botUser}/app` }]
+            ]
+          }
+        });
+      }
+
       user = existing;
       return;
     }
+
+    const wb = typeof db.config.welcomeBonus === 'number' ? db.config.welcomeBonus : 0.01;
 
     const newUser: User = {
       telegramId: tid,
@@ -453,9 +499,9 @@ export async function loginOrRegisterUser(
       lastName: telegramUser.last_name || "",
       photoUrl: telegramUser.photo_url || "",
       bio: "",
-      balance: 0,
-      lifetimeEarned: 0,
-      todayEarned: 0,
+      balance: wb,
+      lifetimeEarned: wb,
+      todayEarned: wb,
       todayDate: getTodayDateString(),
       adsWatchedToday: 0,
       referralCount: 0,
@@ -466,9 +512,21 @@ export async function loginOrRegisterUser(
       following: [],
       verified: false,
       banned: false,
+      welcomeSent: true,
       createdAt: now,
       lastLogin: now
     };
+
+    if (wb > 0) {
+      db.logs.unshift({
+        id: generateId("log"),
+        telegramId: tid,
+        kind: "task",
+        label: "🎁 সাইনআপ ওয়েলকাম বোনাস",
+        amount: wb,
+        createdAt: now
+      });
+    }
 
     // Credit referrer (Level 1)
     if (cleanReferrer) {
@@ -557,14 +615,33 @@ export async function loginOrRegisterUser(
     }
 
     // Welcome message to the new user in bot
-    const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\nআপনার একাউন্ট সফলভাবে সক্রিয় হয়েছে <b>${escapeHtml(db.config.appName)}</b> এ!\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি USDT/টাকা আয় করুন।\n💰 নূন্যতম উইথড্র: $${db.config.minWithdraw} (bKash, Nagad, Binance)\n\n🚀 কাজ শুরু করতে নিচের বোতামে চাপুন।`;
-    messagesToSend.push({ chatId: tid, text: welcomeMsg });
+    const botUser = (db.config.botUsername || "ManeiShopBD_Bot").replace(/^@/, '');
+    const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$${wb.toFixed(2)} USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $${newUser.balance.toFixed(2)} USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$${db.config.referralBonus.toFixed(2)} USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $${db.config.minWithdraw} USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+    messagesToSend.push({
+      chatId: tid,
+      text: welcomeMsg,
+      replyMarkup: {
+        inline_keyboard: [
+          [{ text: "🚀 Open ManeiShop App", url: `https://t.me/${botUser}/app` }]
+        ]
+      }
+    });
 
     db.users[tid] = newUser;
     user = newUser;
   });
 
-  // 1. Sync to Firebase
+  // 1. Dispatch all pending bot messages immediately!
+  const token = appStore.get().config.botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  for (const item of messagesToSend) {
+    if (item.chatId && /^-?\d+$/.test(String(item.chatId))) {
+      sendTelegramBotMessage(token, item.chatId, item.text, item.replyMarkup).catch((e) => {
+        console.warn("[Telegram Bot API] Message dispatch error:", e);
+      });
+    }
+  }
+
+  // 2. Sync to Firebase in parallel
   await Promise.allSettled([
     user! ? syncUserToFirebase(user!) : Promise.resolve(),
     parentToSync ? syncUserToFirebase(parentToSync) : Promise.resolve(),
@@ -572,20 +649,6 @@ export async function loginOrRegisterUser(
     grandParentToSync ? syncUserToFirebase(grandParentToSync) : Promise.resolve(),
     grandRefToSync ? syncReferralToFirebase(grandRefToSync) : Promise.resolve()
   ]);
-
-  // 2. Dispatch all pending bot messages with proper token
-  const token = appStore.get().config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
-  if (token && messagesToSend.length > 0) {
-    (async () => {
-      for (const item of messagesToSend) {
-        try {
-          await sendTelegramBotMessage(token, item.chatId, item.text);
-        } catch (e) {
-          console.warn("[Telegram Bot] Send message loop error:", e);
-        }
-      }
-    })();
-  }
 
   return user!;
 }

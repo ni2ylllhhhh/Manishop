@@ -18,6 +18,7 @@ export interface User {
   following: string[];
   verified: boolean;
   banned: boolean;
+  welcomeSent?: boolean;
   createdAt: string;
   lastLogin: string;
 }
@@ -106,6 +107,7 @@ export interface AppConfig {
   tasks: Task[];
   referralBonus: number;
   level2Bonus: number;
+  welcomeBonus: number;
   minWithdraw: number;
   minReferralsForWithdraw: number;
   withdrawAmounts: number[];
