@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2A2F3D" />
+      <stop offset="60%" stop-color="#1A1E29" />
+      <stop offset="100%" stop-color="#13161F" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE49E" />
+      <stop offset="40%" stop-color="#F5B938" />
+      <stop offset="100%" stop-color="#D98A16" />
+    </linearGradient>
+    <linearGradient id="coinGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFDF00" />
+      <stop offset="100%" stop-color="#C58500" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Card -->
+  <rect width="800" height="380" rx="32" fill="url(#bgGrad)" />
+  
+  <!-- Subtle Grid & Circles -->
+  <circle cx="700" cy="80" r="180" fill="#B4813F" opacity="0.12" filter="url(#glow)" />
+  <circle cx="100" cy="300" r="140" fill="#3390EC" opacity="0.08" />
+
+  <!-- Left Content -->
+  <g transform="translate(60, 75)">
+    <!-- Badge -->
+    <rect width="180" height="34" rx="17" fill="#B4813F" fill-opacity="0.2" stroke="#B4813F" stroke-width="1.5" />
+    <text x="90" y="22" fill="#FFE49E" font-family="'Inter', sans-serif" font-size="13" font-weight="800" text-anchor="middle" letter-spacing="1">
+      2-TIER REFERRAL
+    </text>
+
+    <!-- Main Title -->
+    <text x="0" y="85" fill="#FFFFFF" font-family="'Inter', 'Hind Siliguri', sans-serif" font-size="38" font-weight="900">
+      Invite Friends &amp;
+    </text>
+    <text x="0" y="130" fill="url(#goldGrad)" font-family="'Inter', 'Hind Siliguri', sans-serif" font-size="38" font-weight="900">
+      Earn Big Bonuses
+    </text>
+
+    <!-- Reward Pills -->
+    <g transform="translate(0, 160)">
+      <rect width="150" height="42" rx="12" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.15" />
+      <text x="20" y="26" fill="#A0AEC0" font-family="'Inter', sans-serif" font-size="12" font-weight="600">L1 Bonus</text>
+      <text x="135" y="27" fill="#48BB78" font-family="'Inter', sans-serif" font-size="16" font-weight="900" text-anchor="end">+$0.50</text>
+
+      <g transform="translate(165, 0)">
+        <rect width="150" height="42" rx="12" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.15" />
+        <text x="20" y="26" fill="#A0AEC0" font-family="'Inter', sans-serif" font-size="12" font-weight="600">L2 Bonus</text>
+        <text x="135" y="27" fill="#63B3ED" font-family="'Inter', sans-serif" font-size="16" font-weight="900" text-anchor="end">+$0.10</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right Visual Graphics: 3D Gold Coins & Network -->
+  <g transform="translate(580, 190)">
+    <!-- Big Center Gold Coin -->
+    <ellipse cx="0" cy="10" rx="90" ry="90" fill="#996000" />
+    <ellipse cx="0" cy="0" rx="90" ry="90" fill="url(#goldGrad)" stroke="#FFE89E" stroke-width="4" />
+    <ellipse cx="0" cy="0" rx="72" ry="72" fill="#D48812" opacity="0.6" stroke="#FFE89E" stroke-width="2" stroke-dasharray="6,4" />
+    <text x="0" y="24" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="70" font-weight="900" text-anchor="middle" filter="drop-shadow(0px 4px 6px rgba(0,0,0,0.4))">$</text>
+
+    <!-- Floating Mini Coins -->
+    <g transform="translate(-110, -75) scale(0.65)">
+      <circle cx="0" cy="0" r="45" fill="url(#goldGrad)" stroke="#FFE89E" stroke-width="3" />
+      <text x="0" y="15" fill="#FFF" font-family="'Inter', sans-serif" font-size="44" font-weight="900" text-anchor="middle">$</text>
+    </g>
+
+    <g transform="translate(105, -60) scale(0.55)">
+      <circle cx="0" cy="0" r="45" fill="url(#goldGrad)" stroke="#FFE89E" stroke-width="3" />
+      <text x="0" y="15" fill="#FFF" font-family="'Inter', sans-serif" font-size="44" font-weight="900" text-anchor="middle">$</text>
+    </g>
+
+    <g transform="translate(90, 80) scale(0.48)">
+      <circle cx="0" cy="0" r="45" fill="url(#goldGrad)" stroke="#FFE89E" stroke-width="3" />
+      <text x="0" y="15" fill="#FFF" font-family="'Inter', sans-serif" font-size="44" font-weight="900" text-anchor="middle">$</text>
+    </g>
+
+    <!-- Star Sparkles -->
+    <polygon points="0,-12 4,-4 12,0 4,4 0,12 -4,4 -12,0 -4,-4" fill="#FFF" transform="translate(-130, 20) scale(1.4)" filter="url(#glow)" />
+    <polygon points="0,-10 3,-3 10,0 3,3 0,10 -3,3 -10,0 -3,-3" fill="#FFF" transform="translate(130, -10)" />
+  </g>
+</svg>
