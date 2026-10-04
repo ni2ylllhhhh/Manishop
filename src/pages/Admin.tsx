@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { useAppStore } from '../contexts/AuthContext';
-import { appStore, generateId } from '../lib/store';
+import { appStore, generateId, syncBotMenuButton } from '../lib/store';
 import { formatDate } from '../lib/format';
 import {
   syncUserToFirebase,
@@ -298,6 +298,9 @@ export function Admin() {
     });
     const updatedCfg = appStore.get().config;
     syncConfigToFirebase(updatedCfg);
+    if (patch.miniAppUrl || patch.botToken) {
+      syncBotMenuButton(updatedCfg.botToken, updatedCfg.miniAppUrl);
+    }
     toast.success("Settings updated & synced!");
   };
 
@@ -1216,6 +1219,16 @@ export function Admin() {
                   />
                   <p className="mt-1 text-[10px] text-slate-400">
                     Active Token: {cfg.botToken ? `${cfg.botToken.slice(0, 15)}...${cfg.botToken.slice(-6)}` : "Not set"}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <TextConfig
+                    label="Mini App URL (Workers / Hosted URL)"
+                    value={cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"}
+                    onChange={(v) => updateConfig({ miniAppUrl: v })}
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Active Mini App: <a href={cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"} target="_blank" rel="noreferrer" className="text-cyan-400 underline">{cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"}</a> (টেলিগ্রাম বটের মেনু বাটন ও ওয়েলকাম বাটনে এটি ব্যবহৃত হবে)
                   </p>
                 </div>
                 <TextConfig

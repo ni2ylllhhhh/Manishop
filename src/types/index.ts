@@ -92,6 +92,7 @@ export interface AppConfig {
   appName: string;
   botUsername: string;
   botToken: string;
+  miniAppUrl: string;
   supportUrl: string;
   imgbbApiKey: string;
   adminPassword?: string;

@@ -10,6 +10,7 @@ export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
   botUsername: "ManeiShopBD_Bot",
   botToken: "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E",
+  miniAppUrl: "https://manishop.ziniyaapu7.workers.dev/",
   supportUrl: "https://t.me/ManeiShopBD_Site",
   imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
   adminPinHash: "48e6f958531e543731746fd0a4fcba173e2ae226d60eb19a5d021be3c29f7a3e",
@@ -263,6 +264,39 @@ export async function sendTelegramBotMessage(
   }
 }
 
+/**
+ * Configure Telegram Bot menu button to open Mini App URL directly
+ */
+export async function syncBotMenuButton(
+  botToken: string,
+  miniAppUrl: string
+): Promise<boolean> {
+  const token = botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  const url = miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
+  if (!token || !url) return false;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        menu_button: {
+          type: "web_app",
+          text: "ManeiShop",
+          web_app: { url }
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      console.log("[Telegram Bot API] setChatMenuButton updated successfully to:", url);
+    }
+    return Boolean(data.ok);
+  } catch (err) {
+    console.warn("Failed to sync bot menu button:", err);
+    return false;
+  }
+}
+
 let currentDb: AppDatabase = loadInitialData();
 const subscribers = new Set<() => void>();
 
@@ -473,14 +507,14 @@ export async function loginOrRegisterUser(
             createdAt: now
           });
         }
-        const botUser = (db.config.botUsername || "ManeiShopBD_Bot").replace(/^@/, '');
+        const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
         const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$${(wb > 0 ? wb : 0.01).toFixed(2)} USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $${existing.balance.toFixed(2)} USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$${db.config.referralBonus.toFixed(2)} USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $${db.config.minWithdraw} USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
         messagesToSend.push({
           chatId: tid,
           text: welcomeMsg,
           replyMarkup: {
             inline_keyboard: [
-              [{ text: "🚀 Open ManeiShop App", url: `https://t.me/${botUser}/app` }]
+              [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
             ]
           }
         });
@@ -615,14 +649,14 @@ export async function loginOrRegisterUser(
     }
 
     // Welcome message to the new user in bot
-    const botUser = (db.config.botUsername || "ManeiShopBD_Bot").replace(/^@/, '');
+    const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
     const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$${wb.toFixed(2)} USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $${newUser.balance.toFixed(2)} USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$${db.config.referralBonus.toFixed(2)} USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $${db.config.minWithdraw} USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
     messagesToSend.push({
       chatId: tid,
       text: welcomeMsg,
       replyMarkup: {
         inline_keyboard: [
-          [{ text: "🚀 Open ManeiShop App", url: `https://t.me/${botUser}/app` }]
+          [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
         ]
       }
     });
