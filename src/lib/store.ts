@@ -486,8 +486,17 @@ export async function loginOrRegisterUser(
           createdAt: now
         });
 
+        const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
         const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
-        messagesToSend.push({ chatId: parentUser.telegramId, text: referrerText });
+        messagesToSend.push({
+          chatId: parentUser.telegramId,
+          text: referrerText,
+          replyMarkup: {
+            inline_keyboard: [
+              [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
+            ]
+          }
+        });
       }
 
       // Check if existing user never received welcome message or bonus
@@ -618,8 +627,17 @@ export async function loginOrRegisterUser(
       });
 
       // Prepare referrer notification
+      const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
       const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
-      messagesToSend.push({ chatId: parentUser.telegramId, text: referrerText });
+      messagesToSend.push({
+        chatId: parentUser.telegramId,
+        text: referrerText,
+        replyMarkup: {
+          inline_keyboard: [
+            [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
+          ]
+        }
+      });
 
       // Credit grandparent (Level 2)
       if (parentUser.referredBy && db.users[parentUser.referredBy]) {
@@ -643,7 +661,12 @@ export async function loginOrRegisterUser(
 
         messagesToSend.push({
           chatId: grandParent.telegramId,
-          text: `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$${db.config.level2Bonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`
+          text: `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$${db.config.level2Bonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`,
+          replyMarkup: {
+            inline_keyboard: [
+              [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
+            ]
+          }
         });
       }
     }
