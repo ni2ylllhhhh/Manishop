@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
@@ -6,8 +6,7 @@ import {
   User as UserIcon,
   Send,
   Link as LinkIcon,
-  Trophy,
-  ShieldCheck
+  Trophy
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
@@ -16,6 +15,19 @@ import { formatDate } from '../lib/format';
 export function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [tapCount, setTapCount] = useState(0);
+
+  const handleSecretTap = () => {
+    setTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        navigate('/admin');
+        return 0;
+      }
+      return next;
+    });
+    setTimeout(() => setTapCount(0), 3000);
+  };
 
   const rankTier = useMemo(() => {
     const refs = user?.referralCount ?? 0;
@@ -38,7 +50,7 @@ export function Profile() {
         >
           <SettingsIcon className="h-4 w-4 text-brand-500" />
         </button>
-        <h1 className="text-[15px] font-extrabold text-ink">Profile</h1>
+        <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink select-none cursor-pointer">Profile</h1>
       </header>
 
       {/* Main Profile Info Card */}
@@ -101,18 +113,6 @@ export function Profile() {
           <StatBox label="Balance" value={`$${user.balance.toFixed(2)}`} />
           <StatBox label="Referrals" value={String(user.referralCount)} />
           <StatBox label="Earned" value={`$${user.lifetimeEarned.toFixed(2)}`} />
-        </div>
-
-        {/* Direct Admin Panel Access */}
-        <div className="mt-4 pt-3 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => navigate('/admin')}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-2.5 px-4 text-xs font-bold text-white shadow-sm transition active:scale-98"
-          >
-            <ShieldCheck className="h-4 w-4 text-amber-400" />
-            <span>অ্যাডমিন প্যানেল (Admin Panel)</span>
-          </button>
         </div>
       </section>
     </main>

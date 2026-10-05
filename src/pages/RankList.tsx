@@ -11,12 +11,29 @@ export function RankList() {
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
 
+  const fakeIds = useMemo(() => new Set(["984210452", "742189301", "610928374", "528401923", "419401859"]), []);
+
   const sortedUsers = useMemo(() => {
-    return Object.values(db.users)
-      .filter((u) => !u.banned)
-      .sort((a, b) => b.lifetimeEarned - a.lifetimeEarned)
-      .slice(0, 10);
-  }, [db.users]);
+    const list = Object.values(db.users)
+      .filter((u) => u && u.telegramId && !u.banned && !fakeIds.has(String(u.telegramId)))
+      .filter((u) => {
+        // If there are real users in the system, exclude the demo user 724910385 from leaderboard
+        const realCount = Object.values(db.users).filter(
+          (x) => x && !fakeIds.has(String(x.telegramId)) && String(x.telegramId) !== "724910385"
+        ).length;
+        if (realCount > 0 && String(u.telegramId) === "724910385") {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if ((b.lifetimeEarned || 0) !== (a.lifetimeEarned || 0)) {
+          return (b.lifetimeEarned || 0) - (a.lifetimeEarned || 0);
+        }
+        return (b.balance || 0) - (a.balance || 0);
+      });
+    return list;
+  }, [db.users, fakeIds]);
 
   const [first, second, third] = sortedUsers;
   const remaining = sortedUsers.slice(3);
@@ -51,7 +68,7 @@ export function RankList() {
           <h2 className="text-[15px] font-extrabold text-ink">Top Earners</h2>
         </div>
         <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-extrabold text-brand-600">
-          {Object.keys(db.users).length} TOTAL
+          {sortedUsers.length} TOTAL
         </span>
       </div>
 
@@ -80,9 +97,12 @@ export function RankList() {
               <Avatar src={user.photoUrl} name={user.firstName} size={34} ring="ring-brand-200" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12px] font-bold text-ink">
-                  UID: {maskUid(user.telegramId)}
+                  {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : `UID: ${maskUid(user.telegramId)}`}
                 </p>
                 <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="text-[9.5px] text-gray-400 font-mono">
+                    UID: {maskUid(user.telegramId)}
+                  </span>
                   <span className="rounded-full bg-brand-50 px-1.5 py-[1px] text-[9px] font-bold text-brand-600">
                     #{rank}
                   </span>
@@ -140,17 +160,31 @@ function PodiumColumn({ place, user }: { place: 1 | 2 | 3; user?: User }) {
     <div className="flex flex-1 flex-col items-center">
       <Crown className={`h-5 w-5 ${config.crown}`} fill="currentColor" />
       <div className="relative mt-0.5">
-        <Avatar src={user?.photoUrl} name={user?.firstName || " "} size={config.size} ring={config.ring} />
+        {user ? (
+          <Avatar src={user.photoUrl} name={user.firstName} size={config.size} ring={config.ring} />
+        ) : (
+          <div
+            className="flex items-center justify-center rounded-full border-2 border-dashed border-slate-300 bg-white/70 text-slate-400"
+            style={{ width: config.size, height: config.size }}
+          >
+            <span className="text-[10px] font-bold">খালি</span>
+          </div>
+        )}
         <span
           className={`absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-extrabold ${config.badge}`}
         >
           {place}
         </span>
       </div>
-      <p className="mt-1.5 text-center text-[10.5px] font-semibold text-gray-600">
-        {user ? `UID: ${maskUid(user.telegramId)}` : "Empty"}
+      <p className="mt-1.5 text-center text-[10.5px] font-semibold text-gray-700 max-w-[85px] truncate">
+        {user ? (user.firstName ? `${user.firstName}` : `UID: ${maskUid(user.telegramId)}`) : "Waiting..."}
       </p>
-      <span className={`mt-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${config.pill}`}>
+      {user && (
+        <p className="text-[9px] text-gray-400 font-mono">
+          UID: {maskUid(user.telegramId)}
+        </p>
+      )}
+      <span className={`mt-1 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${config.pill}`}>
         ${(user?.lifetimeEarned ?? 0).toFixed(2)}
       </span>
       <div

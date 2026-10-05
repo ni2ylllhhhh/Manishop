@@ -66,101 +66,13 @@ export function generateId(prefix = "id"): string {
 
 const STORAGE_KEY = "maneishopbd_db";
 
-const initialSeedUsers: Record<string, User> = {};
-
-const initialSeedPosts: Post[] = [
-  {
-    id: "post_seed_1",
-    authorId: "984210452",
-    authorName: "Tanvir Hossain",
-    authorPhoto: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-    text: "Just received another $30 USDT payout in my Binance account! Thanks Click2Cash team for super fast payment. 🔥💰",
-    imageUrl: null,
-    likes: ["742189301", "610928374", "528401923"],
-    createdAt: new Date(Date.now() - 2 * 3600000).toISOString()
-  },
-  {
-    id: "post_seed_2",
-    authorId: "742189301",
-    authorName: "Rashid Khan",
-    authorPhoto: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80",
-    text: "Tip for everyone: Complete all 3 video tasks daily and invite active members to reach your 15 referral target quickly!",
-    imageUrl: null,
-    likes: ["984210452"],
-    createdAt: new Date(Date.now() - 5 * 3600000).toISOString()
-  }
-];
-
 const initialDatabase: AppDatabase = {
   rev: 0,
-  users: initialSeedUsers,
-  referrals: [
-    {
-      id: "ref_seed_1",
-      referrerTelegramId: "984210452",
-      referredTelegramId: "742189301",
-      level: 1,
-      bonus: 0.50,
-      createdAt: new Date(Date.now() - 24 * 86400000).toISOString()
-    },
-    {
-      id: "ref_seed_2",
-      referrerTelegramId: "742189301",
-      referredTelegramId: "610928374",
-      level: 1,
-      bonus: 0.50,
-      createdAt: new Date(Date.now() - 18 * 86400000).toISOString()
-    },
-    {
-      id: "ref_seed_3",
-      referrerTelegramId: "984210452",
-      referredTelegramId: "610928374",
-      level: 2,
-      bonus: 0.10,
-      createdAt: new Date(Date.now() - 18 * 86400000).toISOString()
-    }
-  ],
-  withdrawals: [
-    {
-      id: "wd_seed_1",
-      telegramId: "984210452",
-      name: "Tanvir Hossain",
-      amount: 30,
-      method: "Binance (USDT BEP20)",
-      account: "84729104",
-      status: "approved",
-      createdAt: new Date(Date.now() - 3 * 86400000).toISOString()
-    },
-    {
-      id: "wd_seed_2",
-      telegramId: "742189301",
-      name: "Rashid Khan",
-      amount: 15,
-      method: "Binance (USDT BEP20)",
-      account: "19402834",
-      status: "approved",
-      createdAt: new Date(Date.now() - 5 * 86400000).toISOString()
-    }
-  ],
-  posts: initialSeedPosts,
-  logs: [
-    {
-      id: "log_seed_1",
-      telegramId: "984210452",
-      kind: "ad",
-      label: "AD SLOT 1 (slot1)",
-      amount: 0.05,
-      createdAt: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      id: "log_seed_2",
-      telegramId: "984210452",
-      kind: "task",
-      label: "Video watch",
-      amount: 0.05,
-      createdAt: new Date(Date.now() - 7200000).toISOString()
-    }
-  ],
+  users: {},
+  referrals: [],
+  withdrawals: [],
+  posts: [],
+  logs: [],
   config: defaultConfig
 };
 
@@ -191,10 +103,36 @@ function loadInitialData(): AppDatabase {
       mergedConfig.forceChannelVerification = true;
     }
 
+    // Purge any legacy mock users, referrals, withdrawals
+    const fakeIds = new Set(["984210452", "742189301", "610928374", "528401923", "419401859"]);
+    const cleanedUsers: Record<string, User> = {};
+    if (parsed.users && typeof parsed.users === 'object') {
+      for (const [k, v] of Object.entries(parsed.users as Record<string, User>)) {
+        if (!fakeIds.has(k) && !k.startsWith("seed_") && !k.startsWith("user_seed_")) {
+          cleanedUsers[k] = v;
+        }
+      }
+    }
+
+    const cleanedReferrals = Array.isArray(parsed.referrals)
+      ? parsed.referrals.filter((r: any) => !r.id?.startsWith("ref_seed") && !fakeIds.has(r.referrerTelegramId) && !fakeIds.has(r.referredTelegramId))
+      : [];
+
+    const cleanedWithdrawals = Array.isArray(parsed.withdrawals)
+      ? parsed.withdrawals.filter((w: any) => !w.id?.startsWith("wd_seed") && !fakeIds.has(w.telegramId))
+      : [];
+
+    const cleanedLogs = Array.isArray(parsed.logs)
+      ? parsed.logs.filter((l: any) => !l.id?.startsWith("log_seed") && !fakeIds.has(l.telegramId))
+      : [];
+
     return {
       ...deepClone(initialDatabase),
       ...parsed,
-      users: { ...initialSeedUsers, ...(parsed.users || {}) },
+      users: cleanedUsers,
+      referrals: cleanedReferrals,
+      withdrawals: cleanedWithdrawals,
+      logs: cleanedLogs,
       config: mergedConfig
     };
   } catch {

@@ -2,7 +2,13 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { toast } from 'sonner';
 import type { User, AppConfig, AdSlot, Task, PendingAction } from '../types';
 import { appStore, loginOrRegisterUser, creditUserEarning, getTodayDateString } from '../lib/store';
-import { subscribeToFirebaseUser, subscribeConfig, syncUserToFirebase, subscribeAllReferrals } from '../lib/firebase';
+import {
+  subscribeToFirebaseUser,
+  subscribeConfig,
+  syncUserToFirebase,
+  subscribeAllReferrals,
+  subscribeAllUsers
+} from '../lib/firebase';
 import {
   initTelegramWebApp,
   getTelegramInitData,
@@ -213,6 +219,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(remoteRefs)) {
         appStore.update((d) => {
           d.referrals = remoteRefs;
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time listener for all genuine users from Firebase RTDB (for Leaderboard/RankList)
+  useEffect(() => {
+    const unsub = subscribeAllUsers((remoteUsers) => {
+      if (remoteUsers && typeof remoteUsers === 'object') {
+        appStore.update((d) => {
+          const fakeIds = new Set(["984210452", "742189301", "610928374", "528401923", "419401859"]);
+          // Purge fake users
+          for (const fid of fakeIds) {
+            delete d.users[fid];
+          }
+          for (const [uid, u] of Object.entries(remoteUsers)) {
+            if (!fakeIds.has(uid) && u && u.telegramId) {
+              d.users[uid] = { ...(d.users[uid] || {}), ...u };
+            }
+          }
         });
       }
     });
