@@ -6,10 +6,14 @@ import {
   syncReferralToFirebase
 } from './firebase';
 
+const ENV_BOT_TOKEN =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) ||
+  "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
+
 export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
   botUsername: "ManeiShopBD_Bot",
-  botToken: "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E",
+  botToken: ENV_BOT_TOKEN,
   miniAppUrl: "https://manishop.ziniyaapu7.workers.dev/",
   supportUrl: "https://t.me/ManeiShopBD_Site",
   imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
@@ -87,7 +91,9 @@ function loadInitialData(): AppDatabase {
     const parsed = JSON.parse(raw);
     const mergedConfig: AppConfig = { ...defaultConfig, ...(parsed.config || {}) };
     mergedConfig.appName = "ManeiShopBD";
-    mergedConfig.botToken = mergedConfig.botToken || defaultConfig.botToken;
+    if (!mergedConfig.botToken || mergedConfig.botToken === "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") {
+      mergedConfig.botToken = defaultConfig.botToken;
+    }
     mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
     delete mergedConfig.adminPassword;
     mergedConfig.adMinSeconds = 60;
@@ -154,7 +160,7 @@ export async function sendTelegramBotMessage(
   text: string,
   replyMarkup?: any
 ): Promise<boolean> {
-  const token = botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  const token = botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   const cid = String(chatId).trim();
   if (!token || !cid || !/^-?\d+$/.test(cid)) return false;
 
@@ -209,7 +215,7 @@ export async function syncBotMenuButton(
   botToken: string,
   miniAppUrl: string
 ): Promise<boolean> {
-  const token = botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  const token = botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   const url = miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
   if (!token || !url) return false;
   try {
@@ -627,7 +633,7 @@ export async function loginOrRegisterUser(
   });
 
   // 1. Dispatch all pending bot messages immediately!
-  const token = appStore.get().config.botToken || defaultConfig.botToken || "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E";
+  const token = appStore.get().config.botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   for (const item of messagesToSend) {
     if (item.chatId && /^-?\d+$/.test(String(item.chatId))) {
       sendTelegramBotMessage(token, item.chatId, item.text, item.replyMarkup).catch((e) => {

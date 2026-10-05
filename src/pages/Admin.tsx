@@ -1213,12 +1213,13 @@ export function Admin() {
                 />
                 <div className="col-span-2">
                   <TextConfig
-                    label="Bot Token (Telegram API Bot Token)"
+                    label="Bot Token (Telegram API Bot Token - Secured)"
                     value={cfg.botToken}
+                    type="password"
                     onChange={(v) => updateConfig({ botToken: v })}
                   />
                   <p className="mt-1 text-[10px] text-slate-400">
-                    Active Token: {cfg.botToken ? `${cfg.botToken.slice(0, 15)}...${cfg.botToken.slice(-6)}` : "Not set"}
+                    🔒 Token Status: {cfg.botToken ? "•••••••••••••••••••••••• (Encrypted & Active)" : "Not set"}
                   </p>
                 </div>
                 <div className="col-span-2">
@@ -2004,16 +2005,19 @@ function InputText({
 function TextConfig({
   label,
   value,
-  onChange
+  onChange,
+  type = "text"
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  type?: string;
 }) {
   return (
     <label className="block">
       <span className="text-[11px] font-semibold text-slate-500">{label}</span>
       <input
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 h-9 w-full rounded-xl border border-slate-200 px-3 text-xs text-ink outline-none focus:border-brand-500"
