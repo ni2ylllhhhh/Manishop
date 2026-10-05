@@ -166,29 +166,49 @@ export async function sendTelegramBotMessage(
 
   const payload: any = {
     chat_id: cid,
+    chatId: cid,
     text,
-    parse_mode: "HTML"
+    parse_mode: "HTML",
+    replyMarkup,
+    reply_markup: replyMarkup
   };
-  if (replyMarkup) {
-    payload.reply_markup = replyMarkup;
-  }
 
+  // 1. Try local server proxy route first
+  try {
+    const proxyRes = await fetch("/api/send-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId: cid, text, replyMarkup })
+    });
+    if (proxyRes.ok) {
+      const pData = await proxyRes.json().catch(() => ({}));
+      if (pData.ok) {
+        console.log(`[Telegram Proxy] Message sent to ${cid}`);
+        return true;
+      }
+    }
+  } catch {}
+
+  // 2. Direct Telegram Bot API fallback
   try {
     let res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        chat_id: cid,
+        text,
+        parse_mode: "HTML",
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+      })
     });
     let data = await res.json().catch(() => ({}));
     if (!data.ok) {
       console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
       const fallbackPayload: any = {
         chat_id: cid,
-        text: text.replace(/<[^>]*>/g, "")
+        text: text.replace(/<[^>]*>/g, ""),
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
       };
-      if (replyMarkup) {
-        fallbackPayload.reply_markup = replyMarkup;
-      }
       res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

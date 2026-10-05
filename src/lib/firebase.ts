@@ -53,6 +53,7 @@ export async function syncUserToFirebase(user: User): Promise<void> {
       binanceId: user.binanceId || "",
       verified: Boolean(user.verified),
       banned: Boolean(user.banned),
+      welcomeSent: Boolean(user.welcomeSent),
       createdAt: user.createdAt || new Date().toISOString(),
       lastLogin: new Date().toISOString(),
       updatedAt: Date.now()
