@@ -36,8 +36,8 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
           name: 'Main',
           tag: 'Channel',
           subtitle: 'All Videos • Updates • News',
-          username: 'jgjghjghh687',
-          url: 'https://t.me/jgjghjghh687'
+          username: 'ManiShop_Community',
+          url: 'https://t.me/ManiShop_Community'
         },
         {
           id: 'payment',

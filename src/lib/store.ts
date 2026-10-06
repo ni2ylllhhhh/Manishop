@@ -26,8 +26,8 @@ export const defaultConfig: AppConfig = {
       name: "Main",
       tag: "Channel",
       subtitle: "All Videos • Updates • News",
-      username: "jgjghjghh687",
-      url: "https://t.me/jgjghjghh687"
+      username: "ManiShop_Community",
+      url: "https://t.me/ManiShop_Community"
     },
     {
       id: "payment",
@@ -104,6 +104,17 @@ function loadInitialData(): AppDatabase {
 
     if (!Array.isArray(mergedConfig.requiredChannels)) {
       mergedConfig.requiredChannels = defaultConfig.requiredChannels;
+    } else {
+      mergedConfig.requiredChannels = mergedConfig.requiredChannels.map((c) => {
+        if (c.username === "jgjghjghh687") {
+          return {
+            ...c,
+            username: "ManiShop_Community",
+            url: "https://t.me/ManiShop_Community"
+          };
+        }
+        return c;
+      });
     }
     if (typeof mergedConfig.forceChannelVerification !== 'boolean') {
       mergedConfig.forceChannelVerification = true;

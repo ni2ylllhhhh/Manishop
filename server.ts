@@ -278,6 +278,49 @@ async function startTelegramPolling() {
 }
 
 // API Routes
+app.get("/api/check-member", async (req, res) => {
+  const rawCh = String(req.query.channel || "").trim();
+  const clean = rawCh.replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "").replace(/^@/, "").split("/")[0].split("?")[0].trim();
+  const userId = String(req.query.userId || "").trim();
+
+  if (!clean || !userId) {
+    return res.status(400).json({ ok: false, error: "Missing channel or userId" });
+  }
+
+  try {
+    const tgRes = await new Promise<any>((resolve) => {
+      https.get(
+        `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=@${encodeURIComponent(clean)}&user_id=${encodeURIComponent(userId)}`,
+        (apiRes) => {
+          let data = "";
+          apiRes.on("data", (c) => (data += c));
+          apiRes.on("end", () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch {
+              resolve({ ok: false });
+            }
+          });
+        }
+      ).on("error", () => resolve({ ok: false }));
+    });
+
+    if (tgRes.ok) {
+      const st = tgRes.result?.status;
+      const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
+      return res.json({ ok: true, isMember, status: st });
+    }
+
+    const desc = tgRes.description || "";
+    if (desc.includes("member list is inaccessible")) {
+      return res.json({ ok: false, isMember: false, needsBotAdmin: true, error: desc });
+    }
+    return res.json({ ok: true, isMember: false, status: "not_member", error: desc });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, isMember: false, error: err?.message || "Internal server error" });
+  }
+});
+
 app.post("/api/send-message", async (req, res) => {
   const { chatId, text, replyMarkup } = req.body;
   if (!chatId || !text) {

@@ -171,6 +171,44 @@ export default {
       }
     }
 
+    // 3. Telegram Check-Member Proxy Endpoint
+    if (url.pathname === "/api/check-member" && request.method === "GET") {
+      const channel = (url.searchParams.get("channel") || "").replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "").replace(/^@/, "").split("/")[0].split("?")[0].trim();
+      const userId = (url.searchParams.get("userId") || "").trim();
+      if (!channel || !userId) {
+        return new Response(JSON.stringify({ ok: false, error: "Missing parameters" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=@${encodeURIComponent(channel)}&user_id=${encodeURIComponent(userId)}`);
+        const data = await tgRes.json().catch(() => ({}));
+        if (data.ok) {
+          const st = data.result?.status;
+          const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
+          return new Response(JSON.stringify({ ok: true, isMember, status: st }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const desc = data.description || "";
+        if (desc.includes("member list is inaccessible")) {
+          return new Response(JSON.stringify({ ok: false, isMember: false, needsBotAdmin: true, error: desc }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        return new Response(JSON.stringify({ ok: true, isMember: false, status: "not_member", error: desc }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ ok: false, isMember: false, error: String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // Pass through to assets/default
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);

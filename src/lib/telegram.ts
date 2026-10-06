@@ -379,18 +379,42 @@ export interface ChannelCheckResult {
   needsBotAdmin?: boolean;
 }
 
+export function extractTelegramUsername(raw: string): string {
+  if (!raw) return "";
+  let clean = String(raw).trim();
+  clean = clean.replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "");
+  clean = clean.replace(/^@/, "");
+  clean = clean.split("/")[0].split("?")[0].trim();
+  return clean;
+}
+
 export async function checkTelegramMembership(
   botToken: string,
   channelUsername: string,
   userId: string | number
 ): Promise<ChannelCheckResult> {
-  if (!botToken || !channelUsername || !userId) {
+  const clean = extractTelegramUsername(channelUsername);
+  const uid = String(userId).trim();
+  if (!clean || !uid) {
     return { ok: false, isMember: false, error: "Missing parameters" };
   }
-  const clean = channelUsername.replace(/^@/, "").trim();
+
+  // 1. Try local server proxy first
+  try {
+    const proxyRes = await fetch(`/api/check-member?channel=${encodeURIComponent(clean)}&userId=${encodeURIComponent(uid)}`);
+    if (proxyRes.ok) {
+      const pData = await proxyRes.json().catch(() => ({}));
+      if (pData.ok) {
+        return pData;
+      }
+    }
+  } catch {}
+
+  // 2. Direct Telegram Bot API fallback
+  const token = botToken || "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
   try {
     const res = await fetch(
-      `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=@${encodeURIComponent(clean)}&user_id=${encodeURIComponent(String(userId))}`
+      `https://api.telegram.org/bot${token}/getChatMember?chat_id=@${encodeURIComponent(clean)}&user_id=${encodeURIComponent(uid)}`
     );
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
@@ -402,7 +426,6 @@ export async function checkTelegramMembership(
     if (desc.includes("member list is inaccessible")) {
       return { ok: false, isMember: false, needsBotAdmin: true, error: "Bot is not administrator in channel" };
     }
-    // PARTICIPANT_ID_INVALID or user not found means definitely NOT a member
     return { ok: true, isMember: false, status: "not_member", error: desc };
   } catch (err: any) {
     return { ok: false, isMember: false, error: err?.message || "Network error" };
