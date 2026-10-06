@@ -36,6 +36,7 @@ interface TelegramWebApp {
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
   };
   CloudStorage?: TelegramCloudStorage;
+  requestWriteAccess?: (callback?: (granted: boolean) => void) => void;
 }
 
 declare global {
@@ -412,4 +413,25 @@ export async function checkTelegramMembership(
 // Initial auto-patch on module load
 if (typeof window !== 'undefined') {
   patchTelegramCloudStorage();
+}
+
+/**
+ * Request write access from Telegram so the bot is allowed to message the user in chat
+ */
+export async function requestTelegramWriteAccess(): Promise<boolean> {
+  const tg = getTelegramWebApp();
+  if (!tg || typeof tg.requestWriteAccess !== 'function') {
+    return true;
+  }
+  return new Promise((resolve) => {
+    try {
+      tg.requestWriteAccess?.((granted) => {
+        resolve(Boolean(granted));
+      });
+      // Fallback timeout
+      setTimeout(() => resolve(true), 2500);
+    } catch {
+      resolve(true);
+    }
+  });
 }
