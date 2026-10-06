@@ -40,8 +40,11 @@ async function handleTelegramUpdate(update) {
   let referrerId = null;
   if (isStart) {
     const parts = text.split(" ");
-    if (parts.length > 1 && parts[1].trim() && parts[1].trim() !== chatId) {
-      referrerId = parts[1].trim();
+    if (parts.length > 1 && parts[1].trim()) {
+      const rawRef = parts[1].trim().replace(/^(ref_|c2c_|r_|startapp_|start_)/i, '');
+      if (rawRef && rawRef !== chatId && /^\d+$/.test(rawRef)) {
+        referrerId = rawRef;
+      }
     }
   }
 
