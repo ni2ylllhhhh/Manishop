@@ -203,36 +203,18 @@ export async function sendTelegramBotMessage(
     });
     let data = await res.json().catch(() => ({}));
     if (!data.ok) {
-      if (data.error_code === 403) {
-        // Wait briefly for write access permission to propagate, then retry
-        await new Promise((r) => setTimeout(r, 800));
-        res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: cid,
-            text,
-            parse_mode: "HTML",
-            ...(replyMarkup ? { reply_markup: replyMarkup } : {})
-          })
-        });
-        data = await res.json().catch(() => ({}));
-      }
-
-      if (!data.ok) {
-        console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
-        const fallbackPayload: any = {
-          chat_id: cid,
-          text: text.replace(/<[^>]*>/g, ""),
-          ...(replyMarkup ? { reply_markup: replyMarkup } : {})
-        };
-        res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(fallbackPayload)
-        });
-        data = await res.json().catch(() => ({}));
-      }
+      console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
+      const fallbackPayload: any = {
+        chat_id: cid,
+        text: text.replace(/<[^>]*>/g, ""),
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+      };
+      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackPayload)
+      });
+      data = await res.json().catch(() => ({}));
     }
     if (data.ok) {
       console.log(`[Telegram Bot API] Message sent successfully to ${cid}`);

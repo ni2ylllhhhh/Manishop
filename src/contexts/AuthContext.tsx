@@ -17,8 +17,7 @@ import {
   triggerHaptic,
   openExternalLink,
   getTelegramWebApp,
-  checkTelegramMembership,
-  requestTelegramWriteAccess
+  checkTelegramMembership
 } from '../lib/telegram';
 
 interface AuthContextType {
@@ -135,11 +134,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      if (tgUser) {
-        // Request write access so the bot is allowed to send the welcome message to this user in chat
-        requestTelegramWriteAccess().catch(() => {});
-      }
-
       const userToRegister = tgUser || {
         id: 700000000 + Math.floor(Math.random() * 99999999),
         first_name: "Telegram",
