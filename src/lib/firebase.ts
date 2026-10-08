@@ -319,7 +319,7 @@ export function subscribeConfig(
       if (snap.exists()) {
         const val = snap.val() as Partial<AppConfig>;
         if (val && typeof val === 'object') {
-          delete val.botToken;
+          delete (val as any).botToken;
         }
         onConfig(val);
       }

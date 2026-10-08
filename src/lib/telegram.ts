@@ -389,7 +389,6 @@ export function extractTelegramUsername(raw: string): string {
 }
 
 export async function checkTelegramMembership(
-  _botToken: string,
   channelUsername: string,
   userId: string | number
 ): Promise<ChannelCheckResult> {

@@ -86,7 +86,7 @@ function loadInitialData(): AppDatabase {
     const parsed = JSON.parse(raw);
     const mergedConfig: AppConfig = { ...defaultConfig, ...(parsed.config || {}) };
     mergedConfig.appName = "ManeiShopBD";
-    delete mergedConfig.botToken;
+    delete (mergedConfig as any).botToken;
     mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
     delete mergedConfig.adminPassword;
     mergedConfig.adMinSeconds = 60;
@@ -159,7 +159,6 @@ export function escapeHtml(str: string): string {
 }
 
 export async function sendTelegramBotMessage(
-  _botToken: string,
   chatId: string | number,
   text: string,
   replyMarkup?: any
@@ -188,8 +187,7 @@ export async function sendTelegramBotMessage(
  * Configure Telegram Bot menu button to open Mini App URL directly
  */
 export async function syncBotMenuButton(
-  _botToken: string,
-  miniAppUrl: string
+  miniAppUrl?: string
 ): Promise<boolean> {
   const url = miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
   try {
@@ -600,7 +598,7 @@ export async function loginOrRegisterUser(
   // 1. Dispatch all pending bot messages immediately!
   for (const item of messagesToSend) {
     if (item.chatId && /^-?\d+$/.test(String(item.chatId))) {
-      sendTelegramBotMessage("", item.chatId, item.text, item.replyMarkup).catch((e) => {
+      sendTelegramBotMessage(item.chatId, item.text, item.replyMarkup).catch((e) => {
         console.warn("[Telegram Proxy] Message dispatch error:", e);
       });
     }

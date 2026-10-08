@@ -72,7 +72,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
 
         try {
-          const res = await checkTelegramMembership("", ch.username, user.telegramId);
+          const res = await checkTelegramMembership(ch.username, user.telegramId);
 
           if (res.ok && res.isMember) {
             // Strictly verified as active member/creator/admin by Telegram Bot API

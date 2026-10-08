@@ -260,7 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       for (const ch of channels) {
         if (!ch.username) continue;
         try {
-          const res = await checkTelegramMembership("", ch.username, currentUser.telegramId);
+          const res = await checkTelegramMembership(ch.username, currentUser.telegramId);
           // If the bot checked and verified the user is NOT a member:
           if (res.ok && !res.isMember) {
             console.warn(`[Surveillance] User ${currentUser.telegramId} is not in @${ch.username}! Revoking access.`);
@@ -296,7 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       clearInterval(interval);
     };
-  }, [currentUser?.telegramId, currentUser?.verified, config.forceChannelVerification, config.requiredChannels, config.botToken]);
+  }, [currentUser?.telegramId, currentUser?.verified, config.forceChannelVerification, config.requiredChannels]);
 
   const handleDemoLogin = useCallback(async () => {
     setStatus('verifying');

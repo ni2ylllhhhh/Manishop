@@ -301,7 +301,7 @@ export function Admin() {
     const updatedCfg = appStore.get().config;
     syncConfigToFirebase(updatedCfg);
     if (patch.miniAppUrl) {
-      syncBotMenuButton("", updatedCfg.miniAppUrl);
+      syncBotMenuButton(updatedCfg.miniAppUrl);
     }
     toast.success("Settings updated & synced!");
   };
@@ -1215,15 +1215,6 @@ export function Admin() {
                   value={cfg.botUsername}
                   onChange={(v) => updateConfig({ botUsername: v })}
                 />
-                <div className="col-span-2 rounded-xl bg-emerald-50/70 border border-emerald-200 p-3">
-                  <div className="flex items-center gap-1.5 text-emerald-800">
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span className="text-xs font-bold">🔒 Telegram Bot Token Status: Secure & Active</span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-emerald-700">
-                    বট টোকেন সম্পূর্ণ নিরাপদভাবে সার্ভার সাইড সিক্রেট এনভায়রনমেন্টে সংরক্ষিত রয়েছে। কোনো সাধারণ ইউজার বা ব্রাউজার ইন্সপেক্ট করে এটি দেখতে পারবে না।
-                  </p>
-                </div>
                 <div className="col-span-2">
                   <TextConfig
                     label="Mini App URL (Workers / Hosted URL)"
