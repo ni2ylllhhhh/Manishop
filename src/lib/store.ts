@@ -6,9 +6,10 @@ import {
   syncReferralToFirebase
 } from './firebase';
 
+export const ACTIVE_BOT_TOKEN = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
 const ENV_BOT_TOKEN =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) ||
-  "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
+  ACTIVE_BOT_TOKEN;
 
 export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
@@ -91,8 +92,8 @@ function loadInitialData(): AppDatabase {
     const parsed = JSON.parse(raw);
     const mergedConfig: AppConfig = { ...defaultConfig, ...(parsed.config || {}) };
     mergedConfig.appName = "ManeiShopBD";
-    if (!mergedConfig.botToken || mergedConfig.botToken === "8922187032:AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") {
-      mergedConfig.botToken = defaultConfig.botToken;
+    if (!mergedConfig.botToken || mergedConfig.botToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !mergedConfig.botToken.startsWith("8922187032:AAG")) {
+      mergedConfig.botToken = ACTIVE_BOT_TOKEN;
     }
     mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
     delete mergedConfig.adminPassword;

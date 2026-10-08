@@ -27,6 +27,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
   const [clickedMap, setClickedMap] = useState<Record<string, boolean>>({});
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
+  const [autoCheckSeconds, setAutoCheckSeconds] = useState<number>(25);
 
   const channels = Array.isArray(config.requiredChannels)
     ? config.requiredChannels
@@ -49,6 +50,8 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
       ];
 
+  const ACTIVE_BOT_TOKEN = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
+
   // Core verification worker - STRICT REAL-TIME BOT CHECK
   const performVerification = async (isManualClick = false) => {
     if (!user?.telegramId) {
@@ -59,7 +62,10 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     if (isManualClick) setChecking(true);
     setAdminNotice(null);
 
-    const token = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
+    const rawToken = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
+    const token = (!rawToken || rawToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !rawToken.startsWith("8922187032:AAG"))
+      ? ACTIVE_BOT_TOKEN
+      : rawToken;
     if (!token) {
       if (isManualClick) toast.error("বট কনফিগারেশন পাওয়া যায়নি!");
       if (isManualClick) setChecking(false);
@@ -183,12 +189,13 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     });
   }, [user?.telegramId, config.forceChannelVerification]);
 
-  // 2. Visibility, Tab Switch, Focus Return & 25-Second Continuous Background Surveillance
+  // 2. Visibility, Tab Switch, Focus Return & 25-Second Continuous Auto-Verification Loop
   useEffect(() => {
     if (config.forceChannelVerification === false || !user?.telegramId) return;
 
     const handleFocusOrVisible = () => {
       if (document.visibilityState === 'visible') {
+        setAutoCheckSeconds(25);
         performVerification(false);
       }
     };
@@ -196,19 +203,25 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
     document.addEventListener('visibilitychange', handleFocusOrVisible);
     window.addEventListener('focus', handleFocusOrVisible);
 
-    // Continuous 25-second background interval check
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        performVerification(false);
-      }
-    }, 25000);
+    // 1-second countdown ticker for 25-second auto-verification
+    const timer = setInterval(() => {
+      if (isVerifiedState) return;
+
+      setAutoCheckSeconds((prev) => {
+        if (prev <= 1) {
+          performVerification(false);
+          return 25;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     return () => {
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
       window.removeEventListener('focus', handleFocusOrVisible);
-      clearInterval(interval);
+      clearInterval(timer);
     };
-  }, [user?.telegramId, config.forceChannelVerification, channels, config.botToken]);
+  }, [user?.telegramId, config.forceChannelVerification, isVerifiedState]);
 
   const handleOpenChannel = (id: string, url: string) => {
     triggerHaptic("medium");
@@ -440,6 +453,17 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
                     </>
                   )}
                 </button>
+              </div>
+
+              {/* 25-Second Auto Verification Live Radar Indicator */}
+              <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-red-950/60 via-black/80 to-red-950/60 border border-red-500/25 py-1.5 px-2 text-center shadow-inner">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                <p className="text-[10px] text-slate-300 font-medium">
+                  স্বয়ংক্রিয় যাচাই চলছে • <span className="text-red-400 font-bold">{autoCheckSeconds} সে.</span> পর পর অটো চেক
+                </p>
               </div>
 
               {/* Bottom Alert / Bell Footer */}
