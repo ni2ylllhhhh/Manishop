@@ -6,15 +6,9 @@ import {
   syncReferralToFirebase
 } from './firebase';
 
-export const ACTIVE_BOT_TOKEN = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
-const ENV_BOT_TOKEN =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) ||
-  ACTIVE_BOT_TOKEN;
-
 export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
   botUsername: "ManeiShopBD_Bot",
-  botToken: ENV_BOT_TOKEN,
   miniAppUrl: "https://manishop.ziniyaapu7.workers.dev/",
   supportUrl: "https://t.me/ManeiShopBD_Site",
   imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
@@ -92,9 +86,7 @@ function loadInitialData(): AppDatabase {
     const parsed = JSON.parse(raw);
     const mergedConfig: AppConfig = { ...defaultConfig, ...(parsed.config || {}) };
     mergedConfig.appName = "ManeiShopBD";
-    if (!mergedConfig.botToken || mergedConfig.botToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !mergedConfig.botToken.startsWith("8922187032:AAG")) {
-      mergedConfig.botToken = ACTIVE_BOT_TOKEN;
-    }
+    delete mergedConfig.botToken;
     mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
     delete mergedConfig.adminPassword;
     mergedConfig.adMinSeconds = 60;
@@ -167,25 +159,15 @@ export function escapeHtml(str: string): string {
 }
 
 export async function sendTelegramBotMessage(
-  botToken: string,
+  _botToken: string,
   chatId: string | number,
   text: string,
   replyMarkup?: any
 ): Promise<boolean> {
-  const token = botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   const cid = String(chatId).trim();
-  if (!token || !cid || !/^-?\d+$/.test(cid)) return false;
+  if (!cid || !/^-?\d+$/.test(cid)) return false;
 
-  const payload: any = {
-    chat_id: cid,
-    chatId: cid,
-    text,
-    parse_mode: "HTML",
-    replyMarkup,
-    reply_markup: replyMarkup
-  };
-
-  // 1. Try local server proxy route first
+  // 1. Dispatch via local server proxy route
   try {
     const proxyRes = await fetch("/api/send-message", {
       method: "POST",
@@ -194,78 +176,29 @@ export async function sendTelegramBotMessage(
     });
     if (proxyRes.ok) {
       const pData = await proxyRes.json().catch(() => ({}));
-      if (pData.ok) {
-        console.log(`[Telegram Proxy] Message sent to ${cid}`);
-        return true;
-      }
+      return Boolean(pData.ok);
     }
-  } catch {}
-
-  // 2. Direct Telegram Bot API fallback
-  try {
-    let res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: cid,
-        text,
-        parse_mode: "HTML",
-        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
-      })
-    });
-    let data = await res.json().catch(() => ({}));
-    if (!data.ok) {
-      console.warn("[Telegram Bot API] HTML send notice, retrying plain text:", data);
-      const fallbackPayload: any = {
-        chat_id: cid,
-        text: text.replace(/<[^>]*>/g, ""),
-        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
-      };
-      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fallbackPayload)
-      });
-      data = await res.json().catch(() => ({}));
-    }
-    if (data.ok) {
-      console.log(`[Telegram Bot API] Message sent successfully to ${cid}`);
-    } else {
-      console.warn(`[Telegram Bot API] Message delivery failed for ${cid}:`, data);
-    }
-    return Boolean(data.ok);
   } catch (err) {
-    console.warn("Failed to send telegram bot message:", err);
-    return false;
+    console.warn("[Telegram Proxy] Message dispatch error:", err);
   }
+  return false;
 }
 
 /**
  * Configure Telegram Bot menu button to open Mini App URL directly
  */
 export async function syncBotMenuButton(
-  botToken: string,
+  _botToken: string,
   miniAppUrl: string
 ): Promise<boolean> {
-  const token = botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   const url = miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
-  if (!token || !url) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+    const res = await fetch("/api/set-menu-button", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        menu_button: {
-          type: "web_app",
-          text: "ManeiShop",
-          web_app: { url }
-        }
-      })
+      body: JSON.stringify({ url })
     });
     const data = await res.json().catch(() => ({}));
-    if (data.ok) {
-      console.log("[Telegram Bot API] setChatMenuButton updated successfully to:", url);
-    }
     return Boolean(data.ok);
   } catch (err) {
     console.warn("Failed to sync bot menu button:", err);
@@ -665,11 +598,10 @@ export async function loginOrRegisterUser(
   });
 
   // 1. Dispatch all pending bot messages immediately!
-  const token = appStore.get().config.botToken || defaultConfig.botToken || ENV_BOT_TOKEN;
   for (const item of messagesToSend) {
     if (item.chatId && /^-?\d+$/.test(String(item.chatId))) {
-      sendTelegramBotMessage(token, item.chatId, item.text, item.replyMarkup).catch((e) => {
-        console.warn("[Telegram Bot API] Message dispatch error:", e);
+      sendTelegramBotMessage("", item.chatId, item.text, item.replyMarkup).catch((e) => {
+        console.warn("[Telegram Proxy] Message dispatch error:", e);
       });
     }
   }

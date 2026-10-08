@@ -256,16 +256,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const channels = config.requiredChannels || [];
     if (channels.length === 0) return;
 
-    const token = (!config.botToken || config.botToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !config.botToken.startsWith("8922187032:AAG"))
-      ? "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c"
-      : config.botToken;
-    if (!token) return;
-
     const checkChannelStatus = async () => {
       for (const ch of channels) {
         if (!ch.username) continue;
         try {
-          const res = await checkTelegramMembership(token, ch.username, currentUser.telegramId);
+          const res = await checkTelegramMembership("", ch.username, currentUser.telegramId);
           // If the bot checked and verified the user is NOT a member:
           if (res.ok && !res.isMember) {
             console.warn(`[Surveillance] User ${currentUser.telegramId} is not in @${ch.username}! Revoking access.`);

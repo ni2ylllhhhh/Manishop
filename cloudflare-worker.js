@@ -6,7 +6,7 @@
  * 3. Static Assets / SPA Serving
  */
 
-const BOT_TOKEN = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
+const BOT_TOKEN = (typeof process !== "undefined" && process.env?.BOT_TOKEN) || "";
 const MINI_APP_URL = "https://manishop.ziniyaapu7.workers.dev/";
 const RTDB_URL = "https://maneishopbd-default-rtdb.firebaseio.com";
 

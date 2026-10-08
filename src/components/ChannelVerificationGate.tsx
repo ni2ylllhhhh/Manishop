@@ -50,8 +50,6 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
       ];
 
-  const ACTIVE_BOT_TOKEN = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
-
   // Core verification worker - STRICT REAL-TIME BOT CHECK
   const performVerification = async (isManualClick = false) => {
     if (!user?.telegramId) {
@@ -61,17 +59,6 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
     if (isManualClick) setChecking(true);
     setAdminNotice(null);
-
-    const rawToken = config.botToken || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BOT_TOKEN) || "";
-    const token = (!rawToken || rawToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !rawToken.startsWith("8922187032:AAG"))
-      ? ACTIVE_BOT_TOKEN
-      : rawToken;
-    if (!token) {
-      if (isManualClick) toast.error("বট কনফিগারেশন পাওয়া যায়নি!");
-      if (isManualClick) setChecking(false);
-      setIsVerifyingInitial(false);
-      return;
-    }
 
     try {
       const nextJoined: Record<string, boolean> = {};
@@ -85,7 +72,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
         }
 
         try {
-          const res = await checkTelegramMembership(token, ch.username, user.telegramId);
+          const res = await checkTelegramMembership("", ch.username, user.telegramId);
 
           if (res.ok && res.isMember) {
             // Strictly verified as active member/creator/admin by Telegram Bot API

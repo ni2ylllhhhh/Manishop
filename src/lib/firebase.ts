@@ -319,9 +319,7 @@ export function subscribeConfig(
       if (snap.exists()) {
         const val = snap.val() as Partial<AppConfig>;
         if (val && typeof val === 'object') {
-          if (!val.botToken || val.botToken.includes("AAFJufbT0i1oMQr6HihpdZVWX8BkqmJKC-E") || !val.botToken.startsWith("8922187032:AAG")) {
-            val.botToken = "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
-          }
+          delete val.botToken;
         }
         onConfig(val);
       }

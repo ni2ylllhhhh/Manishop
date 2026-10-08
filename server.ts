@@ -11,10 +11,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
-const BOT_TOKEN =
-  process.env.VITE_BOT_TOKEN ||
-  process.env.BOT_TOKEN ||
-  "8922187032:AAGXcO_wReVHRab4ME-X_0-eBB1dixWer-c";
+const BOT_TOKEN = process.env.BOT_TOKEN || "";
+if (!BOT_TOKEN) {
+  console.warn("[Security] Warning: BOT_TOKEN is not set in environment!");
+}
 const MINI_APP_URL = "https://manishop.ziniyaapu7.workers.dev/";
 const RTDB_URL = "https://maneishopbd-default-rtdb.firebaseio.com";
 
@@ -645,6 +645,45 @@ app.post("/api/send-message", async (req, res) => {
   }
   const ok = await sendTelegramMessage(chatId, text, replyMarkup);
   res.json({ ok });
+});
+
+app.post("/api/set-menu-button", async (req, res) => {
+  const url = req.body?.url || MINI_APP_URL;
+  try {
+    const payload = JSON.stringify({
+      menu_button: {
+        type: "web_app",
+        text: "ManeiShop",
+        web_app: { url }
+      }
+    });
+    const reqTg = https.request(
+      `https://api.telegram.org/bot${BOT_TOKEN}/setChatMenuButton`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload)
+        }
+      },
+      (resTg) => {
+        let data = "";
+        resTg.on("data", (c) => (data += c));
+        resTg.on("end", () => {
+          try {
+            res.json(JSON.parse(data));
+          } catch {
+            res.json({ ok: false });
+          }
+        });
+      }
+    );
+    reqTg.on("error", () => res.json({ ok: false }));
+    reqTg.write(payload);
+    reqTg.end();
+  } catch {
+    res.json({ ok: false });
+  }
 });
 
 app.post("/api/telegram-webhook", async (req, res) => {

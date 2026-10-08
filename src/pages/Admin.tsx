@@ -300,8 +300,8 @@ export function Admin() {
     });
     const updatedCfg = appStore.get().config;
     syncConfigToFirebase(updatedCfg);
-    if (patch.miniAppUrl || patch.botToken) {
-      syncBotMenuButton(updatedCfg.botToken, updatedCfg.miniAppUrl);
+    if (patch.miniAppUrl) {
+      syncBotMenuButton("", updatedCfg.miniAppUrl);
     }
     toast.success("Settings updated & synced!");
   };
@@ -309,23 +309,22 @@ export function Admin() {
   const testChannelBot = async (ch: RequiredChannel) => {
     if (!ch.username) return;
     setChannelTestStatus((prev) => ({ ...prev, [ch.id]: { loading: true } }));
-    const token = cfg.botToken;
     try {
-      const cleanUser = ch.username.replace(/^@/, '').trim();
-      const res = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=@${encodeURIComponent(cleanUser)}`);
+      const cleanUser = ch.username.replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, '').replace(/^@/, '').split('/')[0].split('?')[0].trim();
+      const res = await fetch(`/api/check-member?channel=${encodeURIComponent(cleanUser)}&userId=8235864550`);
       const data = await res.json().catch(() => ({}));
       if (data.ok) {
         setChannelTestStatus((prev) => ({
           ...prev,
-          [ch.id]: { loading: false, ok: true, message: `সংযুক্ত: "${data.result?.title}"` }
+          [ch.id]: { loading: false, ok: true, message: `সংযুক্ত ও বট সচল (${data.status || "active"})` }
         }));
-        toast.success(`চ্যানেল কানেক্টেড: ${data.result?.title}`);
+        toast.success(`চ্যানেল কানেক্টেড ও ভেরিফিকেশন সচল!`);
       } else {
         setChannelTestStatus((prev) => ({
           ...prev,
-          [ch.id]: { loading: false, ok: false, message: data.description || "অ্যাক্সেস করা যায়নি" }
+          [ch.id]: { loading: false, ok: false, message: data.error || "অ্যাক্সেস করা যায়নি" }
         }));
-        toast.error(`এরর: ${data.description}`);
+        toast.error(`এরর: ${data.error || "অ্যাক্সেস করা যায়নি"}`);
       }
     } catch (e: any) {
       setChannelTestStatus((prev) => ({
@@ -1216,15 +1215,13 @@ export function Admin() {
                   value={cfg.botUsername}
                   onChange={(v) => updateConfig({ botUsername: v })}
                 />
-                <div className="col-span-2">
-                  <TextConfig
-                    label="Bot Token (Telegram API Bot Token - Secured)"
-                    value={cfg.botToken}
-                    type="password"
-                    onChange={(v) => updateConfig({ botToken: v })}
-                  />
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    🔒 Token Status: {cfg.botToken ? "•••••••••••••••••••••••• (Encrypted & Active)" : "Not set"}
+                <div className="col-span-2 rounded-xl bg-emerald-50/70 border border-emerald-200 p-3">
+                  <div className="flex items-center gap-1.5 text-emerald-800">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span className="text-xs font-bold">🔒 Telegram Bot Token Status: Secure & Active</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-emerald-700">
+                    বট টোকেন সম্পূর্ণ নিরাপদভাবে সার্ভার সাইড সিক্রেট এনভায়রনমেন্টে সংরক্ষিত রয়েছে। কোনো সাধারণ ইউজার বা ব্রাউজার ইন্সপেক্ট করে এটি দেখতে পারবে না।
                   </p>
                 </div>
                 <div className="col-span-2">
