@@ -209,6 +209,50 @@ export default {
       }
     }
 
+    // 4. Telegram Broadcast Item Proxy Endpoint
+    if (url.pathname === "/api/broadcast-send-item" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { chatId, messageType, text, mediaUrl, replyMarkup } = body;
+        let endpoint = "sendMessage";
+        const postData = {
+          chat_id: chatId,
+          parse_mode: "HTML",
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+        };
+        if (messageType === 'photo' && mediaUrl) {
+          endpoint = "sendPhoto";
+          postData.photo = mediaUrl;
+          postData.caption = text;
+        } else if (messageType === 'video' && mediaUrl) {
+          endpoint = "sendVideo";
+          postData.video = mediaUrl;
+          postData.caption = text;
+        } else if (messageType === 'document' && mediaUrl) {
+          endpoint = "sendDocument";
+          postData.document = mediaUrl;
+          postData.caption = text;
+        } else {
+          postData.text = text;
+        }
+
+        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(postData)
+        });
+        const json = await res.json().catch(() => ({}));
+        return new Response(JSON.stringify(json), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // Pass through to assets/default
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);

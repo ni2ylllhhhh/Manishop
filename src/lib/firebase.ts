@@ -10,7 +10,7 @@ import {
   remove,
   DataSnapshot
 } from "firebase/database";
-import type { User, Withdrawal, Referral, AppConfig } from "../types";
+import type { User, Withdrawal, Referral, AppConfig, BroadcastCampaign } from "../types";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDZ5Ae1Y16fk_TsAQ-hc8MXJCmoSB2gbJY",
@@ -331,5 +331,63 @@ export function subscribeConfig(
   } catch (err) {
     console.warn("[Firebase RTDB] subscribeConfig error:", err);
     return () => {};
+  }
+}
+
+/**
+ * Save or update a broadcast campaign to Firebase RTDB
+ */
+export async function syncBroadcastToFirebase(campaign: BroadcastCampaign): Promise<void> {
+  if (!campaign || !campaign.id) return;
+  try {
+    const bcRef = rtdbRef(rtdb, `broadcasts/${campaign.id}`);
+    await set(bcRef, {
+      ...campaign,
+      updatedAtTimestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn("[Firebase RTDB] syncBroadcastToFirebase error:", err);
+  }
+}
+
+/**
+ * Subscribe in real time to all broadcast campaigns
+ */
+export function subscribeAllBroadcasts(
+  onBroadcasts: (bcs: BroadcastCampaign[]) => void
+): () => void {
+  try {
+    const bcsRef = rtdbRef(rtdb, "broadcasts");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.values(val) as BroadcastCampaign[];
+        // Sort newest first
+        list.sort((a, b) => (b.serialNumber || 0) - (a.serialNumber || 0));
+        onBroadcasts(list);
+      } else {
+        onBroadcasts([]);
+      }
+    };
+    onValue(bcsRef, handler);
+    return () => off(bcsRef, "value", handler);
+  } catch (err) {
+    console.warn("[Firebase RTDB] subscribeAllBroadcasts error:", err);
+    return () => {};
+  }
+}
+
+/**
+ * Delete a broadcast campaign from Firebase RTDB
+ */
+export async function deleteBroadcastFromFirebase(id: string): Promise<boolean> {
+  if (!id) return false;
+  try {
+    const bcRef = rtdbRef(rtdb, `broadcasts/${id}`);
+    await remove(bcRef);
+    return true;
+  } catch (err) {
+    console.warn("[Firebase RTDB] deleteBroadcastFromFirebase error:", err);
+    return false;
   }
 }

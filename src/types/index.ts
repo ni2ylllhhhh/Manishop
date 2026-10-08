@@ -88,6 +88,37 @@ export interface RequiredChannel {
   url: string;
 }
 
+export interface BroadcastButton {
+  label: string;
+  url: string;
+}
+
+export type BroadcastMessageType = 'text' | 'photo' | 'video' | 'document';
+export type BroadcastTargetAudience = 'all' | 'active' | 'recent' | 'specific' | 'verified_only' | 'unverified_only';
+export type BroadcastStatus = 'draft' | 'running' | 'paused' | 'stopped' | 'completed';
+
+export interface BroadcastCampaign {
+  id: string;
+  serialNumber: number;
+  title: string;
+  messageType: BroadcastMessageType;
+  text: string;
+  mediaUrl?: string;
+  buttons: BroadcastButton[];
+  buttonLayout: 'single' | 'double';
+  targetAudience: BroadcastTargetAudience;
+  targetValue?: string;
+  totalTarget: number;
+  sentCount: number;
+  failedCount: number;
+  status: BroadcastStatus;
+  currentIndex: number;
+  targetUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export interface AppConfig {
   appName: string;
   botUsername: string;
@@ -121,6 +152,7 @@ export interface AppDatabase {
   withdrawals: Withdrawal[];
   posts: Post[];
   logs: EarningLog[];
+  broadcasts?: BroadcastCampaign[];
   config: AppConfig;
 }
 

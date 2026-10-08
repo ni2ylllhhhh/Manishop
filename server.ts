@@ -278,6 +278,323 @@ async function startTelegramPolling() {
 }
 
 // API Routes
+// ==========================================
+// BROADCAST ENGINE
+// ==========================================
+interface BroadcastItem {
+  id: string;
+  serialNumber: number;
+  title: string;
+  messageType: 'text' | 'photo' | 'video' | 'document';
+  text: string;
+  mediaUrl?: string;
+  buttons: Array<{ label: string; url: string }>;
+  buttonLayout: 'single' | 'double';
+  targetAudience: string;
+  targetValue?: string;
+  totalTarget: number;
+  sentCount: number;
+  failedCount: number;
+  status: 'draft' | 'running' | 'paused' | 'stopped' | 'completed';
+  currentIndex: number;
+  targetUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+let activeCampaign: BroadcastItem | null = null;
+let broadcastShouldPause = false;
+let broadcastShouldStop = false;
+let isBroadcastWorkerActive = false;
+
+function buildBroadcastInlineKeyboard(buttons: Array<{ label: string; url: string }>, layout: 'single' | 'double') {
+  if (!buttons || !Array.isArray(buttons) || buttons.length === 0) return undefined;
+  const validButtons = buttons
+    .filter((b) => b && b.label && b.url)
+    .map((b) => ({ text: b.label.trim(), url: b.url.trim() }));
+  if (validButtons.length === 0) return undefined;
+
+  if (layout === 'double') {
+    const rows: any[] = [];
+    for (let i = 0; i < validButtons.length; i += 2) {
+      if (i + 1 < validButtons.length) {
+        rows.push([validButtons[i], validButtons[i + 1]]);
+      } else {
+        rows.push([validButtons[i]]);
+      }
+    }
+    return { inline_keyboard: rows };
+  }
+  return { inline_keyboard: validButtons.map((b) => [b]) };
+}
+
+async function sendBroadcastTelegramItem(
+  chatId: string,
+  messageType: 'text' | 'photo' | 'video' | 'document',
+  text: string,
+  mediaUrl?: string,
+  replyMarkup?: any
+): Promise<{ ok: boolean; retryAfter?: number; error?: string }> {
+  return new Promise((resolve) => {
+    let endpoint = "sendMessage";
+    const body: any = {
+      chat_id: chatId,
+      parse_mode: "HTML",
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+    };
+
+    if (messageType === 'photo' && mediaUrl) {
+      endpoint = "sendPhoto";
+      body.photo = mediaUrl;
+      body.caption = text;
+    } else if (messageType === 'video' && mediaUrl) {
+      endpoint = "sendVideo";
+      body.video = mediaUrl;
+      body.caption = text;
+    } else if (messageType === 'document' && mediaUrl) {
+      endpoint = "sendDocument";
+      body.document = mediaUrl;
+      body.caption = text;
+    } else {
+      body.text = text;
+    }
+
+    const payload = JSON.stringify(body);
+    const req = https.request(
+      `https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload)
+        }
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.ok) {
+              resolve({ ok: true });
+            } else {
+              resolve({
+                ok: false,
+                retryAfter: parsed.parameters?.retry_after,
+                error: parsed.description || "Telegram API Error"
+              });
+            }
+          } catch {
+            resolve({ ok: false, error: "Invalid JSON response" });
+          }
+        });
+      }
+    );
+    req.on("error", (err) => resolve({ ok: false, error: err?.message }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function runBroadcastWorker() {
+  if (isBroadcastWorkerActive || !activeCampaign) return;
+  isBroadcastWorkerActive = true;
+  broadcastShouldPause = false;
+  broadcastShouldStop = false;
+
+  console.log(`[Broadcast Engine] Starting broadcast #${activeCampaign.serialNumber} ("${activeCampaign.title}") targeting ${activeCampaign.totalTarget} users...`);
+
+  const replyMarkup = buildBroadcastInlineKeyboard(activeCampaign.buttons, activeCampaign.buttonLayout);
+  let lastSyncTime = Date.now();
+
+  try {
+    while (activeCampaign && activeCampaign.currentIndex < activeCampaign.targetUserIds.length) {
+      if (broadcastShouldStop) {
+        activeCampaign.status = 'stopped';
+        activeCampaign.updatedAt = new Date().toISOString();
+        await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+        break;
+      }
+
+      if (broadcastShouldPause) {
+        activeCampaign.status = 'paused';
+        activeCampaign.updatedAt = new Date().toISOString();
+        await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+        break;
+      }
+
+      const currentUid = activeCampaign.targetUserIds[activeCampaign.currentIndex];
+
+      if (currentUid && /^\d+$/.test(currentUid)) {
+        let result = await sendBroadcastTelegramItem(
+          currentUid,
+          activeCampaign.messageType,
+          activeCampaign.text,
+          activeCampaign.mediaUrl,
+          replyMarkup
+        );
+
+        if (!result.ok && result.retryAfter && result.retryAfter > 0) {
+          console.log(`[Broadcast Engine] Rate limit notice. Waiting ${result.retryAfter}s...`);
+          await new Promise((r) => setTimeout(r, (result.retryAfter! * 1000) + 150));
+          result = await sendBroadcastTelegramItem(
+            currentUid,
+            activeCampaign.messageType,
+            activeCampaign.text,
+            activeCampaign.mediaUrl,
+            replyMarkup
+          );
+        }
+
+        if (result.ok) {
+          activeCampaign.sentCount++;
+        } else {
+          activeCampaign.failedCount++;
+        }
+      } else {
+        activeCampaign.failedCount++;
+      }
+
+      activeCampaign.currentIndex++;
+      activeCampaign.updatedAt = new Date().toISOString();
+
+      // Sync progress to Firebase every 10 users or every 2 seconds
+      if (activeCampaign.currentIndex % 10 === 0 || Date.now() - lastSyncTime > 2000) {
+        lastSyncTime = Date.now();
+        await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+      }
+
+      // Safe pacing: 40ms (~25 msgs/sec for maximum speed without hitting 30/s ceiling)
+      await new Promise((r) => setTimeout(r, 40));
+    }
+
+    if (activeCampaign && activeCampaign.currentIndex >= activeCampaign.targetUserIds.length) {
+      activeCampaign.status = 'completed';
+      activeCampaign.completedAt = new Date().toISOString();
+      activeCampaign.updatedAt = new Date().toISOString();
+      await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+      console.log(`[Broadcast Engine] Broadcast #${activeCampaign.serialNumber} finished! Sent: ${activeCampaign.sentCount}, Failed: ${activeCampaign.failedCount}`);
+    }
+  } catch (err) {
+    console.warn("[Broadcast Engine] Error in worker loop:", err);
+  } finally {
+    isBroadcastWorkerActive = false;
+  }
+}
+
+// Broadcast Endpoints
+app.post("/api/broadcast/start", async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !data.text || !Array.isArray(data.targetUserIds)) {
+      return res.status(400).json({ ok: false, error: "Invalid broadcast payload" });
+    }
+
+    if (isBroadcastWorkerActive && activeCampaign && activeCampaign.status === 'running') {
+      return res.status(409).json({ ok: false, error: "A broadcast is already running. Please pause or stop it first." });
+    }
+
+    const now = new Date().toISOString();
+    const campaignId = data.id || `bc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // Read previous campaigns to get auto-increment serial number
+    const existing = (await fetchFirebase<Record<string, any>>("broadcasts")) || {};
+    const count = Object.keys(existing).length;
+    const serial = Number(data.serialNumber) || count + 1;
+
+    activeCampaign = {
+      id: campaignId,
+      serialNumber: serial,
+      title: data.title || `Broadcast #${serial}`,
+      messageType: data.messageType || 'text',
+      text: data.text,
+      mediaUrl: data.mediaUrl || "",
+      buttons: Array.isArray(data.buttons) ? data.buttons : [],
+      buttonLayout: data.buttonLayout === 'double' ? 'double' : 'single',
+      targetAudience: data.targetAudience || 'all',
+      targetValue: data.targetValue || "",
+      totalTarget: data.targetUserIds.length,
+      sentCount: 0,
+      failedCount: 0,
+      status: 'running',
+      currentIndex: 0,
+      targetUserIds: data.targetUserIds,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+    runBroadcastWorker();
+
+    res.json({ ok: true, campaign: activeCampaign });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
+app.post("/api/broadcast/pause", async (req, res) => {
+  broadcastShouldPause = true;
+  if (activeCampaign) {
+    activeCampaign.status = 'paused';
+    activeCampaign.updatedAt = new Date().toISOString();
+    await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+  }
+  res.json({ ok: true, status: 'paused', campaign: activeCampaign });
+});
+
+app.post("/api/broadcast/resume", async (req, res) => {
+  const { id } = req.body || {};
+  let campaignToResume = activeCampaign;
+
+  if (id && (!activeCampaign || activeCampaign.id !== id)) {
+    const fetched = await fetchFirebase<BroadcastItem>(`broadcasts/${id}`);
+    if (fetched) {
+      campaignToResume = fetched;
+      activeCampaign = fetched;
+    }
+  }
+
+  if (!campaignToResume) {
+    return res.status(404).json({ ok: false, error: "Campaign not found" });
+  }
+
+  campaignToResume.status = 'running';
+  campaignToResume.updatedAt = new Date().toISOString();
+  await putFirebase(`broadcasts/${campaignToResume.id}`, campaignToResume);
+
+  runBroadcastWorker();
+  res.json({ ok: true, status: 'running', campaign: activeCampaign });
+});
+
+app.post("/api/broadcast/stop", async (req, res) => {
+  broadcastShouldStop = true;
+  if (activeCampaign) {
+    activeCampaign.status = 'stopped';
+    activeCampaign.updatedAt = new Date().toISOString();
+    await putFirebase(`broadcasts/${activeCampaign.id}`, activeCampaign);
+  }
+  res.json({ ok: true, status: 'stopped', campaign: activeCampaign });
+});
+
+app.get("/api/broadcast/status", (req, res) => {
+  res.json({
+    ok: true,
+    isRunning: isBroadcastWorkerActive,
+    activeCampaign
+  });
+});
+
+app.get("/api/broadcast/history", async (req, res) => {
+  try {
+    const data = (await fetchFirebase<Record<string, BroadcastItem>>("broadcasts")) || {};
+    const list = Object.values(data);
+    list.sort((a, b) => (b.serialNumber || 0) - (a.serialNumber || 0));
+    res.json({ ok: true, broadcasts: list });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
 app.get("/api/check-member", async (req, res) => {
   const rawCh = String(req.query.channel || "").trim();
   const clean = rawCh.replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "").replace(/^@/, "").split("/")[0].split("?")[0].trim();

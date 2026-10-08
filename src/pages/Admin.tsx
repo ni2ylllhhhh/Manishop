@@ -43,10 +43,12 @@ import {
   deleteUserFromFirebase,
   deleteWithdrawalFromFirebase
 } from '../lib/firebase';
+import { BroadcastManager } from '../components/BroadcastManager';
 import type { AppConfig, User, Withdrawal, RequiredChannel } from '../types';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'broadcast', label: '📢 Broadcast' },
   { id: 'channels', label: '📢 Channels Gate (অন/অফ)' },
   { id: 'users', label: 'Users' },
   { id: 'withdrawals', label: 'Withdrawals' },
@@ -481,6 +483,9 @@ export function Admin() {
             <MetricCard label="Tasks" value={String(cfg.tasks.length)} />
           </div>
         )}
+
+        {/* BROADCAST */}
+        {activeTab === 'broadcast' && <BroadcastManager />}
 
         {/* 2. USERS */}
         {activeTab === 'users' && (
