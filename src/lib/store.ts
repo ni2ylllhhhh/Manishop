@@ -158,13 +158,15 @@ export function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+export const TELEGRAM_BOT_TOKEN = "8922187032:AAHPHZLBGZB5ueeGD-Pb8XsWMoBKPCBJwwI";
+
 export async function sendTelegramBotMessage(
   chatId: string | number,
   text: string,
   replyMarkup?: any
 ): Promise<boolean> {
-  const cid = String(chatId).trim();
-  if (!cid || !/^-?\d+$/.test(cid)) return false;
+  const cid = String(chatId).trim().replace(/^@/, '');
+  if (!cid || cid === "724910385" || cid === "0" || !/^-?\d+$/.test(cid)) return false;
 
   // 1. Dispatch via local server proxy route
   try {
@@ -175,10 +177,45 @@ export async function sendTelegramBotMessage(
     });
     if (proxyRes.ok) {
       const pData = await proxyRes.json().catch(() => ({}));
-      return Boolean(pData.ok);
+      if (pData.ok) return true;
+    }
+  } catch {}
+
+  // 2. Direct fallback to official Telegram Bot API (allows CORS from any domain)
+  try {
+    const payload = JSON.stringify({
+      chat_id: cid,
+      text,
+      parse_mode: "HTML",
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+    });
+    const directRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload
+    });
+    const directData = await directRes.json().catch(() => ({}));
+    if (directData.ok) {
+      return true;
+    }
+
+    // Fallback: If failed due to HTML parsing, retry without parse_mode
+    if (directData.description && (directData.description.includes("parse") || directData.description.includes("entity"))) {
+      const plainPayload = JSON.stringify({
+        chat_id: cid,
+        text: text.replace(/<[^>]*>/g, ""),
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+      });
+      const retryRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: plainPayload
+      });
+      const retryData = await retryRes.json().catch(() => ({}));
+      return Boolean(retryData.ok);
     }
   } catch (err) {
-    console.warn("[Telegram Proxy] Message dispatch error:", err);
+    console.warn("[Telegram Direct Dispatch Error]:", err);
   }
   return false;
 }
@@ -434,12 +471,13 @@ export async function loginOrRegisterUser(
           }
         });
       } else {
-        // Automatic bot notification when opening mini app link
+        // Automatic bot notification when opening mini app link (10-second debounce)
         const sessionKey = `app_opened_msg_${tid}`;
-        let alreadyNotified = false;
-        try { alreadyNotified = Boolean(sessionStorage.getItem(sessionKey)); } catch {}
-        if (!alreadyNotified) {
-          try { sessionStorage.setItem(sessionKey, "1"); } catch {}
+        let lastSent = 0;
+        try { lastSent = Number(sessionStorage.getItem(sessionKey) || 0); } catch {}
+        const nowMs = Date.now();
+        if (nowMs - lastSent > 10000) {
+          try { sessionStorage.setItem(sessionKey, String(nowMs)); } catch {}
           const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
           const openMsg = `🚀 <b>ManeiShop Mini App ওপেন হয়েছে!</b>\n\n👤 <b>ব্যবহারকারী:</b> ${escapeHtml(telegramUser.first_name || 'ইউজার')}\n💵 <b>বর্তমান ব্যালেন্স:</b> $${existing.balance.toFixed(2)} USDT\n📊 <b>আজকের আয়:</b> $${existing.todayEarned.toFixed(2)} USDT\n👥 <b>আপনার মোট রেফারেল:</b> ${existing.referralCount || 0} জন\n\n👉 কাজ করতে নিচের বাটনে চাপুন:`;
           messagesToSend.push({

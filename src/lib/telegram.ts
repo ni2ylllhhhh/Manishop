@@ -415,7 +415,7 @@ export async function checkTelegramMembership(
     return { ok: false, isMember: false, error: "Missing parameters" };
   }
 
-  // Strictly check through secure server-side proxy route
+  // 1. Try server proxy route first
   try {
     const proxyRes = await fetch(`/api/check-member?channel=${encodeURIComponent(clean)}&userId=${encodeURIComponent(uid)}`);
     if (proxyRes.ok) {
@@ -424,11 +424,28 @@ export async function checkTelegramMembership(
         return pData;
       }
     }
-  } catch (err: any) {
-    return { ok: false, isMember: false, error: err?.message || "Network error" };
-  }
+  } catch {}
 
-  return { ok: false, isMember: false, error: "Verification server unavailable" };
+  // 2. Direct fallback to official Telegram Bot API
+  try {
+    const targetChatId = clean.startsWith("-") || /^\d+$/.test(clean) ? clean : `@${clean}`;
+    const directRes = await fetch(
+      `https://api.telegram.org/bot8922187032:AAHPHZLBGZB5ueeGD-Pb8XsWMoBKPCBJwwI/getChatMember?chat_id=${encodeURIComponent(targetChatId)}&user_id=${encodeURIComponent(uid)}`
+    );
+    const tgData = await directRes.json().catch(() => ({}));
+    if (tgData.ok) {
+      const st = tgData.result?.status;
+      const isMember = st === "creator" || st === "administrator" || st === "member" || st === "restricted";
+      return { ok: true, isMember, status: st };
+    }
+    const desc = tgData.description || "";
+    if (desc.includes("member list is inaccessible")) {
+      return { ok: false, isMember: false, needsBotAdmin: true, error: desc };
+    }
+    return { ok: true, isMember: false, status: "not_member", error: desc };
+  } catch (err: any) {
+    return { ok: false, isMember: false, error: err?.message || "Verification check failed" };
+  }
 }
 
 // Initial auto-patch on module load
