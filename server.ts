@@ -24,9 +24,14 @@ app.use(express.json());
 // Helper for sending Telegram messages
 async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: any): Promise<boolean> {
   if (!BOT_TOKEN || !chatId) return false;
+  const targetChatId = String(chatId).trim().replace(/^@/, '');
+  // Ignore mock demo preview accounts
+  if (targetChatId === "724910385" || targetChatId.startsWith("demo_") || targetChatId === "0") {
+    return true;
+  }
   return new Promise((resolve) => {
     const payload = JSON.stringify({
-      chat_id: String(chatId).trim(),
+      chat_id: targetChatId,
       text,
       parse_mode: "HTML",
       ...(replyMarkup ? { reply_markup: replyMarkup } : {})
@@ -38,7 +43,7 @@ async function sendTelegramMessage(chatId: string | number, text: string, replyM
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload)
+          "Content-Length": Buffer.byteLength(payload, "utf8")
         }
       },
       (res) => {
@@ -47,14 +52,64 @@ async function sendTelegramMessage(chatId: string | number, text: string, replyM
         res.on("end", () => {
           try {
             const parsed = JSON.parse(data);
-            resolve(Boolean(parsed.ok));
+            if (parsed.ok) {
+              console.log(`[Telegram Bot] Message sent successfully to ${targetChatId}`);
+              resolve(true);
+            } else {
+              // If chat doesn't exist yet in Telegram, log as info rather than warn
+              if (parsed.description && parsed.description.includes("chat not found")) {
+                console.log(`[Telegram Bot] Chat ${targetChatId} not active yet`);
+                resolve(false);
+                return;
+              }
+              console.warn(`[Telegram Bot] sendMessage to ${targetChatId} failed:`, parsed.description);
+              // Fallback: If failed due to HTML parsing, retry without parse_mode
+              if (parsed.description && (parsed.description.includes("parse") || parsed.description.includes("entity"))) {
+                const plainText = text.replace(/<[^>]*>/g, "");
+                const plainPayload = JSON.stringify({
+                  chat_id: targetChatId,
+                  text: plainText,
+                  ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+                });
+                const retryReq = https.request(
+                  `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Content-Length": Buffer.byteLength(plainPayload, "utf8")
+                    }
+                  },
+                  (retryRes) => {
+                    let rData = "";
+                    retryRes.on("data", (c) => (rData += c));
+                    retryRes.on("end", () => {
+                      try {
+                        const rParsed = JSON.parse(rData);
+                        resolve(Boolean(rParsed.ok));
+                      } catch {
+                        resolve(false);
+                      }
+                    });
+                  }
+                );
+                retryReq.on("error", () => resolve(false));
+                retryReq.write(plainPayload);
+                retryReq.end();
+                return;
+              }
+              resolve(false);
+            }
           } catch {
             resolve(false);
           }
         });
       }
     );
-    req.on("error", () => resolve(false));
+    req.on("error", (err) => {
+      console.warn(`[Telegram Bot] Network error sending to ${targetChatId}:`, err);
+      resolve(false);
+    });
     req.write(payload);
     req.end();
   });
@@ -605,9 +660,10 @@ app.get("/api/check-member", async (req, res) => {
   }
 
   try {
+    const targetChatId = clean.startsWith("-") || /^\d+$/.test(clean) ? clean : `@${clean}`;
     const tgRes = await new Promise<any>((resolve) => {
       https.get(
-        `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=@${encodeURIComponent(clean)}&user_id=${encodeURIComponent(userId)}`,
+        `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(targetChatId)}&user_id=${encodeURIComponent(userId)}`,
         (apiRes) => {
           let data = "";
           apiRes.on("data", (c) => (data += c));
@@ -639,12 +695,116 @@ app.get("/api/check-member", async (req, res) => {
 });
 
 app.post("/api/send-message", async (req, res) => {
-  const { chatId, text, replyMarkup } = req.body;
+  const { chatId, text, replyMarkup, reply_markup } = req.body || {};
+  const targetMarkup = replyMarkup || reply_markup;
   if (!chatId || !text) {
     return res.status(400).json({ ok: false, error: "Missing chatId or text" });
   }
-  const ok = await sendTelegramMessage(chatId, text, replyMarkup);
+  const ok = await sendTelegramMessage(chatId, text, targetMarkup);
   res.json({ ok });
+});
+
+// Dedicated Real-Time Referral & Welcome Notification Engine
+app.post("/api/notify-referral", async (req, res) => {
+  try {
+    const { newUserId, newUserName, referrerId } = req.body || {};
+    const cleanNewUserId = String(newUserId || "").trim().replace(/^@/, '');
+    const cleanUserName = String(newUserName || "ইউজার").trim();
+    const cleanRefId = String(referrerId || "").trim().replace(/^@/, '');
+
+    console.log(`[Referral Event] New User: ${cleanUserName} (${cleanNewUserId}), Referrer: ${cleanRefId}`);
+
+    const now = new Date().toISOString();
+    const miniUrl = MINI_APP_URL || "https://manishop.ziniyaapu7.workers.dev/";
+
+    // 1. Send message to the user in Telegram Bot
+    if (cleanNewUserId && /^\d+$/.test(cleanNewUserId) && cleanNewUserId !== "724910385") {
+      if (req.body?.isExisting) {
+        const openText = `🚀 <b>ManeiShop Mini App ওপেন হয়েছে!</b>\n\n👤 <b>ব্যবহারকারী:</b> ${cleanUserName}\n💵 <b>বর্তমান ব্যালেন্স:</b> $${Number(req.body?.balance || 0).toFixed(2)} USDT\n📊 <b>আজকের আয়:</b> $${Number(req.body?.todayEarned || 0).toFixed(2)} USDT\n👥 <b>আপনার মোট রেফারেল:</b> ${req.body?.referralCount || 0} জন\n\n👉 কাজ করতে নিচের বাটনে চাপুন:`;
+        await sendTelegramMessage(cleanNewUserId, openText, {
+          inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
+        });
+      } else {
+        const welcomeText = `🎉 <b>স্বাগতম ${cleanUserName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+        await sendTelegramMessage(cleanNewUserId, welcomeText, {
+          inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
+        });
+      }
+    }
+
+    // 2. If valid referrer exists, credit them and send Telegram message
+    if (cleanRefId && cleanRefId !== cleanNewUserId && /^\d+$/.test(cleanRefId) && cleanRefId !== "724910385") {
+      const parent = await fetchFirebase<any>(`users/${cleanRefId}`);
+      let currentRefBonus = 0.50;
+      let parentCount = 1;
+      let parentBalance = 0.50;
+
+      if (parent) {
+        parent.referralCount = (Number(parent.referralCount) || 0) + 1;
+        parent.balance = Number(((Number(parent.balance) || 0) + currentRefBonus).toFixed(2));
+        parent.lifetimeEarned = Number(((Number(parent.lifetimeEarned) || 0) + currentRefBonus).toFixed(2));
+        parent.referralEarned = Number(((Number(parent.referralEarned) || 0) + currentRefBonus).toFixed(2));
+        parent.updatedAt = Date.now();
+        await putFirebase(`users/${cleanRefId}`, parent);
+
+        parentCount = parent.referralCount;
+        parentBalance = parent.balance;
+      }
+
+      // Record referral in Firebase RTDB
+      const refId = `ref_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await putFirebase(`referrals/${refId}`, {
+        id: refId,
+        referrerTelegramId: cleanRefId,
+        referredTelegramId: cleanNewUserId,
+        level: 1,
+        bonus: currentRefBonus,
+        createdAt: now
+      });
+
+      // Send telegram message to referrer
+      const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${cleanUserName}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${currentRefBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentBalance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentCount}/15 জন`;
+      await sendTelegramMessage(cleanRefId, referrerText, {
+        inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
+      });
+
+      // 3. Level 2 Grandparent check
+      if (parent && parent.referredBy && parent.referredBy !== cleanRefId && parent.referredBy !== cleanNewUserId) {
+        const grandParent = await fetchFirebase<any>(`users/${parent.referredBy}`);
+        if (grandParent) {
+          grandParent.level2Count = (Number(grandParent.level2Count) || 0) + 1;
+          grandParent.balance = Number(((Number(grandParent.balance) || 0) + 0.10).toFixed(2));
+          grandParent.lifetimeEarned = Number(((Number(grandParent.lifetimeEarned) || 0) + 0.10).toFixed(2));
+          grandParent.referralEarned = Number(((Number(grandParent.referralEarned) || 0) + 0.10).toFixed(2));
+          grandParent.updatedAt = Date.now();
+          await putFirebase(`users/${parent.referredBy}`, grandParent);
+
+          const gRefId = `ref_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+          await putFirebase(`referrals/${gRefId}`, {
+            id: gRefId,
+            referrerTelegramId: parent.referredBy,
+            referredTelegramId: cleanNewUserId,
+            level: 2,
+            bonus: 0.10,
+            createdAt: now
+          });
+
+          await sendTelegramMessage(
+            parent.referredBy,
+            `🌟 <b>লেভেল ২ টিম মেম্বার যুক্ত হয়েছে!</b>\n\n📊 <b>লেভেল ২ টিম সাইজ:</b> ${grandParent.level2Count} জন\n💰 <b>লেভেল ২ বোনাস:</b> +$0.10 USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${grandParent.balance.toFixed(2)} USDT`,
+            {
+              inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
+            }
+          );
+        }
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[Referral Event Error]:", err);
+    res.status(500).json({ ok: false, error: err?.message });
+  }
 });
 
 app.post("/api/set-menu-button", async (req, res) => {

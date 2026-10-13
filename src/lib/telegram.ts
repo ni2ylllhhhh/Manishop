@@ -51,7 +51,12 @@ declare global {
 if (typeof window !== 'undefined') {
   const origError = console.error;
   console.error = function (...args: unknown[]) {
-    if (typeof args[0] === 'string' && args[0].includes('[Telegram.WebApp] CloudStorage is not supported')) {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('[Telegram.WebApp] CloudStorage is not supported') ||
+        args[0].includes('requestWriteAccess is not supported') ||
+        args[0].includes('[Telegram.WebApp] Method'))
+    ) {
       return;
     }
     origError.apply(console, args);
@@ -252,7 +257,7 @@ export function getTelegramUser(): TelegramWebAppUser | null {
 export function getReferralStartParam(): string | null {
   const sanitize = (raw: string | null | undefined): string | null => {
     if (!raw) return null;
-    const clean = String(raw).trim().replace(/^(ref_|c2c_|r_)/i, '');
+    const clean = String(raw).trim().replace(/^(ref_|c2c_|r_|startapp_|start_)/i, '');
     return clean || null;
   };
 
@@ -274,23 +279,33 @@ export function getReferralStartParam(): string | null {
     const rawInit = getTelegramWebApp()?.initData;
     if (rawInit) {
       const parsed = new URLSearchParams(rawInit);
-      const sp = sanitize(parsed.get('start_param'));
+      const sp = sanitize(parsed.get('start_param') || parsed.get('startapp') || parsed.get('ref'));
       if (sp) return persist(sp);
     }
   } catch {}
 
-  // 3. Check window.location query string (?startapp=xxx or ?tgWebAppStartParam=xxx or ?start=xxx)
+  // 3. Check window.location query string (?startapp=xxx, ?start_param=xxx, ?ref=xxx, ?start=xxx, etc.)
   if (typeof window !== 'undefined') {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const sp = sanitize(
         urlParams.get('tgWebAppStartParam') ||
+        urlParams.get('start_param') ||
         urlParams.get('startapp') ||
         urlParams.get('start') ||
         urlParams.get('ref') ||
-        urlParams.get('referrer')
+        urlParams.get('referrer') ||
+        urlParams.get('r') ||
+        urlParams.get('referral')
       );
       if (sp) return persist(sp);
+
+      // Check pathname (e.g. /ref/12345 or /r/12345)
+      const pathMatch = window.location.pathname.match(/\/(?:ref|r|startapp|start)\/([0-9a-zA-Z_]+)/i);
+      if (pathMatch && pathMatch[1]) {
+        const pSp = sanitize(pathMatch[1]);
+        if (pSp) return persist(pSp);
+      }
 
       // 4. Check hash fragment (#tgWebAppStartParam=xxx)
       if (window.location.hash) {
@@ -300,9 +315,11 @@ export function getReferralStartParam(): string | null {
         const hashParams = new URLSearchParams(cleanHash);
         const hashSp = sanitize(
           hashParams.get('tgWebAppStartParam') ||
+          hashParams.get('start_param') ||
           hashParams.get('startapp') ||
           hashParams.get('start') ||
-          hashParams.get('ref')
+          hashParams.get('ref') ||
+          hashParams.get('r')
         );
         if (hashSp) return persist(hashSp);
       }

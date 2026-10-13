@@ -19,7 +19,11 @@
         var origConsoleError = console.error;
         console.error = function() {
           var firstArg = arguments[0];
-          if (typeof firstArg === 'string' && firstArg.indexOf('[Telegram.WebApp] CloudStorage is not supported') !== -1) {
+          if (typeof firstArg === 'string' && (
+            firstArg.indexOf('[Telegram.WebApp] CloudStorage is not supported') !== -1 ||
+            firstArg.indexOf('requestWriteAccess is not supported') !== -1 ||
+            firstArg.indexOf('[Telegram.WebApp] Method') !== -1
+          )) {
             return;
           }
           return origConsoleError.apply(console, arguments);

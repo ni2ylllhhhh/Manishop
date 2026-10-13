@@ -171,6 +171,47 @@ export default {
       }
     }
 
+    // 2b. Real-Time Mini App Referral & Session Notification Endpoint
+    if (url.pathname === "/api/notify-referral" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { newUserId, newUserName, referrerId, isExisting, balance, todayEarned, referralCount } = body || {};
+        const cleanUid = String(newUserId || "").trim().replace(/^@/, '');
+        const cleanName = String(newUserName || "ইউজার").trim();
+        const cleanRef = String(referrerId || "").trim().replace(/^@/, '');
+
+        if (cleanUid && /^\d+$/.test(cleanUid) && cleanUid !== "724910385") {
+          if (isExisting) {
+            const openText = `🚀 <b>ManeiShop Mini App ওপেন হয়েছে!</b>\n\n👤 <b>ব্যবহারকারী:</b> ${cleanName}\n💵 <b>বর্তমান ব্যালেন্স:</b> $${Number(balance || 0).toFixed(2)} USDT\n📊 <b>আজকের আয়:</b> $${Number(todayEarned || 0).toFixed(2)} USDT\n👥 <b>আপনার মোট রেফারেল:</b> ${referralCount || 0} জন\n\n👉 কাজ করতে নিচের বাটনে চাপুন:`;
+            await sendTelegramMessage(cleanUid, openText, {
+              inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
+            });
+          } else {
+            const welcomeText = `🎉 <b>স্বাগতম ${cleanName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+            await sendTelegramMessage(cleanUid, welcomeText, {
+              inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
+            });
+          }
+        }
+
+        if (cleanRef && cleanRef !== cleanUid && /^\d+$/.test(cleanRef) && cleanRef !== "724910385") {
+          const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${cleanName}\n💰 <b>রেফারেল বোনাস:</b> +$0.50 USDT\n\n🚀 এখনই ManeiShop অ্যাপে চেক করুন!`;
+          await sendTelegramMessage(cleanRef, referrerText, {
+            inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
+          });
+        }
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 3. Telegram Check-Member Proxy Endpoint
     if (url.pathname === "/api/check-member" && request.method === "GET") {
       const channel = (url.searchParams.get("channel") || "").replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "").replace(/^@/, "").split("/")[0].split("?")[0].trim();
@@ -182,8 +223,10 @@ export default {
         });
       }
 
+      const botToken = env?.BOT_TOKEN || BOT_TOKEN;
+      const targetChatId = channel.startsWith("-") || /^\d+$/.test(channel) ? channel : `@${channel}`;
       try {
-        const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=@${encodeURIComponent(channel)}&user_id=${encodeURIComponent(userId)}`);
+        const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${encodeURIComponent(targetChatId)}&user_id=${encodeURIComponent(userId)}`);
         const data = await tgRes.json().catch(() => ({}));
         if (data.ok) {
           const st = data.result?.status;

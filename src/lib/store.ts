@@ -258,7 +258,8 @@ export async function loginOrRegisterUser(
 ): Promise<User> {
   const tid = String(telegramUser.id);
   const now = new Date().toISOString();
-  let user: User;
+  const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
+  let user: User | null = null;
   let parentToSync: User | null = null;
   let refToSync: Referral | null = null;
   let grandParentToSync: User | null = null;
@@ -318,8 +319,6 @@ export async function loginOrRegisterUser(
         ...remoteGrandParent
       };
     }
-
-    const displayName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ").trim() || "User";
 
     if (existing) {
       existing.firstName = telegramUser.first_name || existing.firstName;
@@ -434,6 +433,25 @@ export async function loginOrRegisterUser(
             ]
           }
         });
+      } else {
+        // Automatic bot notification when opening mini app link
+        const sessionKey = `app_opened_msg_${tid}`;
+        let alreadyNotified = false;
+        try { alreadyNotified = Boolean(sessionStorage.getItem(sessionKey)); } catch {}
+        if (!alreadyNotified) {
+          try { sessionStorage.setItem(sessionKey, "1"); } catch {}
+          const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
+          const openMsg = `🚀 <b>ManeiShop Mini App ওপেন হয়েছে!</b>\n\n👤 <b>ব্যবহারকারী:</b> ${escapeHtml(telegramUser.first_name || 'ইউজার')}\n💵 <b>বর্তমান ব্যালেন্স:</b> $${existing.balance.toFixed(2)} USDT\n📊 <b>আজকের আয়:</b> $${existing.todayEarned.toFixed(2)} USDT\n👥 <b>আপনার মোট রেফারেল:</b> ${existing.referralCount || 0} জন\n\n👉 কাজ করতে নিচের বাটনে চাপুন:`;
+          messagesToSend.push({
+            chatId: tid,
+            text: openMsg,
+            replyMarkup: {
+              inline_keyboard: [
+                [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
+              ]
+            }
+          });
+        }
       }
 
       user = existing;
@@ -595,16 +613,38 @@ export async function loginOrRegisterUser(
     user = newUser;
   });
 
-  // 1. Dispatch all pending bot messages immediately!
-  for (const item of messagesToSend) {
-    if (item.chatId && /^-?\d+$/.test(String(item.chatId))) {
-      sendTelegramBotMessage(item.chatId, item.text, item.replyMarkup).catch((e) => {
-        console.warn("[Telegram Proxy] Message dispatch error:", e);
-      });
+  // 1. Dispatch all pending bot messages immediately (skip demo mock accounts)
+  const isDemo = tid === "724910385" || telegramUser.username === "demo_user";
+  if (!isDemo) {
+    await Promise.allSettled(
+      messagesToSend.map((item) => {
+        const cleanChatId = String(item.chatId || "").trim().replace(/^@/, '');
+        if (cleanChatId && cleanChatId !== "724910385" && /^-?\d+$/.test(cleanChatId)) {
+          return sendTelegramBotMessage(cleanChatId, item.text, item.replyMarkup);
+        }
+        return Promise.resolve(false);
+      })
+    );
+
+    // 2. Trigger server-side notification engine for Telegram bot delivery
+    if (cleanReferrer || tid) {
+      fetch("/api/notify-referral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newUserId: tid,
+          newUserName: displayName,
+          referrerId: cleanReferrer,
+          isExisting: Boolean(remoteUser && remoteUser.welcomeSent),
+          balance: appStore.get().users[tid]?.balance ?? 0,
+          todayEarned: appStore.get().users[tid]?.todayEarned ?? 0,
+          referralCount: appStore.get().users[tid]?.referralCount ?? 0
+        })
+      }).catch((e) => console.warn("[Notify Referral API Error]:", e));
     }
   }
 
-  // 2. Sync to Firebase in parallel
+  // 3. Sync to Firebase in parallel
   await Promise.allSettled([
     user! ? syncUserToFirebase(user!) : Promise.resolve(),
     parentToSync ? syncUserToFirebase(parentToSync) : Promise.resolve(),

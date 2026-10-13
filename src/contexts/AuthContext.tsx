@@ -93,6 +93,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const tg = await initTelegramWebApp();
     setInTelegram(!!tg);
 
+    // Request write access only if supported by Telegram WebApp version 6.9+
+    try {
+      if (
+        tg &&
+        typeof (tg as any).requestWriteAccess === 'function' &&
+        typeof tg.isVersionAtLeast === 'function' &&
+        tg.isVersionAtLeast('6.9')
+      ) {
+        (tg as any).requestWriteAccess();
+      }
+    } catch {}
+
     const initData = getTelegramInitData();
     const tgUser = getTelegramUser();
     const refStartParam = getReferralStartParam();
