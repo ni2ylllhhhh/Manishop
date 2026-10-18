@@ -857,6 +857,76 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, timestamp: Date.now() });
 });
 
+// Bot Security & Bio Integrity Watchdog
+async function syncOfficialBotBio(): Promise<boolean> {
+  if (!BOT_TOKEN) return false;
+  try {
+    const shortDesc = '🛍️ ManeiShopBD - ভিডিও দেখে ও রেফার করে ঘরে বসেই ইনকাম করুন এবং সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন!';
+    const longDesc = '👋 স্বাগতম ManeiShopBD অফিসিয়াল বটে!\n\n💰 প্রতিদিন ভিডিও বিজ্ঞাপন দেখুন ও স্পেশাল টাস্ক সম্পন্ন করে সরাসরি আয় করুন।\n👥 প্রতি সফল রেফারে পাবেন +$0.50 USDT!\n💵 নূন্যতম উইথড্র: $5.00 USDT (বিকাশ, নগদ, বাইন্যান্স)।\n\n🚀 এখনই কাজ শুরু করতে নিচের Start বাটনে চাপুন অথবা মেনু থেকে Mini App খুলুন!';
+
+    const postCall = (endpoint: string, body: any) => new Promise((resolve) => {
+      const p = JSON.stringify(body);
+      const r = https.request(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(p, "utf8") }
+      }, (res) => {
+        let d = "";
+        res.on("data", c => d += c);
+        res.on("end", () => {
+          try { resolve(JSON.parse(d)); } catch { resolve({}); }
+        });
+      });
+      r.on("error", () => resolve({}));
+      r.write(p);
+      r.end();
+    });
+
+    await postCall("setMyShortDescription", { short_description: shortDesc });
+    await postCall("setMyDescription", { description: longDesc });
+    await postCall("setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "🚀 Open ManeiShop",
+        web_app: { url: MINI_APP_URL }
+      }
+    });
+
+    console.log("[Bot Security] Official ManeiShopBD bio, description and menu button enforced successfully.");
+    return true;
+  } catch (err) {
+    console.warn("[Bot Security] syncOfficialBotBio error:", err);
+    return false;
+  }
+}
+
+async function enforceBotProfile() {
+  if (!BOT_TOKEN) return;
+  try {
+    const descData = await new Promise<any>((resolve) => {
+      https.get(`https://api.telegram.org/bot${BOT_TOKEN}/getMyDescription`, (res) => {
+        let d = "";
+        res.on("data", (c) => (d += c));
+        res.on("end", () => {
+          try { resolve(JSON.parse(d)); } catch { resolve({}); }
+        });
+      }).on("error", () => resolve({}));
+    });
+
+    const currentDesc = descData?.result?.description || "";
+    if (!currentDesc || currentDesc.includes("chatprovider") || !currentDesc.includes("ManeiShopBD")) {
+      console.log("[Bot Security] Spam or unverified bio detected! Overwriting with official ManeiShopBD bio...");
+      await syncOfficialBotBio();
+    }
+  } catch (e) {
+    // Ignore minor network quirks
+  }
+}
+
+app.post("/api/bot/sync-profile", async (req, res) => {
+  const ok = await syncOfficialBotBio();
+  res.json({ ok });
+});
+
 // Setup Vite / Static Serving
 async function startServer() {
   const isProd = process.env.NODE_ENV === "production";
@@ -879,6 +949,9 @@ async function startServer() {
     console.log(`[Server] ManeiShop Full-Stack Server running on port ${PORT}`);
     // Start background Telegram polling
     startTelegramPolling();
+    // Enforce official bio immediately and monitor every 30 seconds
+    syncOfficialBotBio();
+    setInterval(enforceBotProfile, 30000);
   });
 }
 
