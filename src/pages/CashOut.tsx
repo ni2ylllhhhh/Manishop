@@ -204,7 +204,7 @@ export function CashOut() {
         </div>
 
         {/* Visa / Mastercard Blurred Row */}
-        <div className="relative mt-2.5 flex items-center justify-center rounded-2xl bg-[#242930]/70 py-2.5 px-3 border border-white/5 overflow-hidden select-none">
+        <div className="relative mt-2.5 flex items-center justify-center rounded-2xl bg-[#242930]/70 py-2.5 px-3 border border-white/5 overflow-hidden">
           <div className="flex items-center gap-2 filter blur-[2px] opacity-40">
             <span className="text-[11px] font-bold text-blue-400 tracking-wider">VISA</span>
             <div className="flex -space-x-1.5">

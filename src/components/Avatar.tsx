@@ -22,7 +22,7 @@ export function Avatar({ src, name, size = 40, ring, className = "" }: AvatarPro
   return (
     <div
       style={style}
-      className={`shrink-0 overflow-hidden rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold select-none ${
+      className={`shrink-0 overflow-hidden rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold ${
         ring ? `ring-2 ${ring}` : ""
       } ${className}`}
     >

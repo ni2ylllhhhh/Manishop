@@ -228,7 +228,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
       <div
         className={`transition-opacity duration-200 ${
           isVerifyingInitial || !isVerifiedState
-            ? "pointer-events-none select-none opacity-85"
+            ? "pointer-events-none opacity-85"
             : ""
         }`}
         aria-hidden={!isVerifiedState || isVerifyingInitial}
@@ -238,7 +238,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
       {/* 2. Loading State Overlay (Clean translucent tint - zero blur) */}
       {isVerifyingInitial && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 px-6 select-none animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/35 px-6 animate-fadeIn">
           {/* Futuristic Red Cyber Emblem */}
           <div className="relative flex items-center justify-center">
             <div className="absolute -inset-2 rounded-full bg-red-600/20 animate-pulse" />
@@ -267,7 +267,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
 
       {/* 3. Mandatory Channel Verification Modal (Translucent clean backdrop - ZERO blur!) */}
       {!isVerifyingInitial && !isVerifiedState && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/35 overflow-y-auto select-none animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 bg-black/35 overflow-y-auto animate-fadeIn">
           {/* Centered Futuristic Red Verification Card */}
           <div className="relative w-full max-w-[325px] pt-8">
             
@@ -361,7 +361,7 @@ export function ChannelVerificationGate({ children }: { children: React.ReactNod
                           handleOpenChannel(ch.id, ch.url);
                         }
                       }}
-                      className={`flex flex-col items-center justify-between rounded-xl border p-2.5 transition-all cursor-pointer select-none active:scale-95 group ${
+                      className={`flex flex-col items-center justify-between rounded-xl border p-2.5 transition-all cursor-pointer active:scale-95 group ${
                         isJoined
                           ? 'border-emerald-500/90 bg-[#06180c] shadow-[0_0_10px_rgba(16,185,129,0.3)] hover:border-emerald-400'
                           : 'border-[#ff2a3a]/80 bg-gradient-to-b from-[#220407] to-[#120204] shadow-[0_0_8px_rgba(255,42,58,0.3)] hover:border-[#ff4d5a] hover:shadow-[0_0_15px_rgba(255,42,58,0.5)]'

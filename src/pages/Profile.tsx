@@ -50,7 +50,7 @@ export function Profile() {
         >
           <SettingsIcon className="h-4 w-4 text-brand-500" />
         </button>
-        <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink select-none cursor-pointer">Profile</h1>
+        <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink cursor-pointer">Profile</h1>
       </header>
 
       {/* Main Profile Info Card */}
