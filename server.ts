@@ -861,9 +861,6 @@ app.get("/api/health", (req, res) => {
 async function syncOfficialBotBio(): Promise<boolean> {
   if (!BOT_TOKEN) return false;
   try {
-    const shortDesc = '🛍️ ManeiShopBD - ভিডিও দেখে ও রেফার করে ঘরে বসেই ইনকাম করুন এবং সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন!';
-    const longDesc = '👋 স্বাগতম ManeiShopBD অফিসিয়াল বটে!\n\n💰 প্রতিদিন ভিডিও বিজ্ঞাপন দেখুন ও স্পেশাল টাস্ক সম্পন্ন করে সরাসরি আয় করুন।\n👥 প্রতি সফল রেফারে পাবেন +$0.50 USDT!\n💵 নূন্যতম উইথড্র: $5.00 USDT (বিকাশ, নগদ, বাইন্যান্স)।\n\n🚀 এখনই কাজ শুরু করতে নিচের Start বাটনে চাপুন অথবা মেনু থেকে Mini App খুলুন!';
-
     const postCall = (endpoint: string, body: any) => new Promise((resolve) => {
       const p = JSON.stringify(body);
       const r = https.request(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, {
@@ -881,8 +878,26 @@ async function syncOfficialBotBio(): Promise<boolean> {
       r.end();
     });
 
-    await postCall("setMyShortDescription", { short_description: shortDesc });
-    await postCall("setMyDescription", { description: longDesc });
+    // 1. Purge language overrides used by spammers
+    const foreignLangs = ['ru', 'bn', 'hi', 'ar', 'es', 'pt', 'id', 'de', 'fr', 'zh', 'fa', 'tr', 'uz'];
+    for (const l of foreignLangs) {
+      await postCall("setMyShortDescription", { short_description: "", language_code: l });
+      await postCall("setMyDescription", { description: "", language_code: l });
+    }
+
+    // 2. Set official default bio & description
+    const defaultShort = '🛍️ ManeiShopBD - ভিডিও বিজ্ঞাপন দেখুন ও রেফার করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে ইনকাম করুন!';
+    const defaultDesc = '👋 স্বাগতম ManeiShopBD অফিসিয়াল বটে!\n\n💰 প্রতিদিন ভিডিও বিজ্ঞাপন দেখুন ও স্পেশাল টাস্ক সম্পন্ন করে সরাসরি আয় করুন।\n👥 প্রতি সফল রেফারে পাবেন +$0.50 USDT!\n💵 নূন্যতম উইথড্র: $5.00 USDT (বিকাশ, নগদ, বাইন্যান্স)।\n\n🚀 এখনই কাজ শুরু করতে নিচের Start বাটনে চাপুন অথবা মেনু থেকে Mini App খুলুন!';
+    await postCall("setMyShortDescription", { short_description: defaultShort });
+    await postCall("setMyDescription", { description: defaultDesc });
+
+    // 3. Set official English bio & description (so English Telegram users see official info)
+    const enShort = '🛍️ ManeiShopBD - Watch video ads, complete tasks, invite friends and earn USDT!';
+    const enDesc = '👋 Welcome to ManeiShopBD Official Bot!\n\n💰 Watch daily video ads and complete tasks to earn USDT.\n👥 Earn +$0.50 USDT per referral!\n💵 Minimum withdrawal: $5.00 USDT (Bkash, Nagad, Binance).\n\n🚀 Tap Start below or open the Mini App to start earning now!';
+    await postCall("setMyShortDescription", { short_description: enShort, language_code: "en" });
+    await postCall("setMyDescription", { description: enDesc, language_code: "en" });
+
+    // 4. Set Mini App Menu Button
     await postCall("setChatMenuButton", {
       menu_button: {
         type: "web_app",
@@ -891,7 +906,7 @@ async function syncOfficialBotBio(): Promise<boolean> {
       }
     });
 
-    console.log("[Bot Security] Official ManeiShopBD bio, description and menu button enforced successfully.");
+    console.log("[Bot Security] Official ManeiShopBD bio, description (EN + Default) & menu button enforced successfully.");
     return true;
   } catch (err) {
     console.warn("[Bot Security] syncOfficialBotBio error:", err);
@@ -902,8 +917,8 @@ async function syncOfficialBotBio(): Promise<boolean> {
 async function enforceBotProfile() {
   if (!BOT_TOKEN) return;
   try {
-    const descData = await new Promise<any>((resolve) => {
-      https.get(`https://api.telegram.org/bot${BOT_TOKEN}/getMyDescription`, (res) => {
+    const fetchApi = (method: string, lang = "") => new Promise<any>((resolve) => {
+      https.get(`https://api.telegram.org/bot${BOT_TOKEN}/${method}?language_code=${lang}`, (res) => {
         let d = "";
         res.on("data", (c) => (d += c));
         res.on("end", () => {
@@ -912,9 +927,16 @@ async function enforceBotProfile() {
       }).on("error", () => resolve({}));
     });
 
-    const currentDesc = descData?.result?.description || "";
-    if (!currentDesc || currentDesc.includes("chatprovider") || !currentDesc.includes("ManeiShopBD")) {
-      console.log("[Bot Security] Spam or unverified bio detected! Overwriting with official ManeiShopBD bio...");
+    const [defShort, enShort] = await Promise.all([
+      fetchApi("getMyShortDescription"),
+      fetchApi("getMyShortDescription", "en")
+    ]);
+
+    const s1 = defShort?.result?.short_description || "";
+    const s2 = enShort?.result?.short_description || "";
+
+    if (s1.includes("chatprovider") || s2.includes("chatprovider") || !s1.includes("ManeiShopBD") || !s2.includes("ManeiShopBD")) {
+      console.log("[Bot Security] Spam detected in bot bio! Immediately purging and locking official ManeiShopBD bio...");
       await syncOfficialBotBio();
     }
   } catch (e) {
