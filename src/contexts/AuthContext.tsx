@@ -375,10 +375,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 3. Returned after 1 minute (60s to 360s):
     // টাকা সরাসরি ব্যালেন্সে যোগ হবে!
     const updated = await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
-    triggerHaptic('success');
-    toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
-      description: `${act.label} সফলভাবে সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${(updated?.balance || 0).toFixed(2)} USDT`
-    });
+    if (updated) {
+      triggerHaptic('success');
+      toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
+        description: `${act.label} সফলভাবে সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${updated.balance.toFixed(2)} USDT`
+      });
+    }
   }, [sessionTid]);
 
   useEffect(() => {

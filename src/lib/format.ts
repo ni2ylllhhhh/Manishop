@@ -1,5 +1,6 @@
-export function formatUsd(amount: number, decimals = 3): string {
-  return `$${amount.toFixed(decimals)}`;
+export function formatUsd(amount: number | string | undefined | null, decimals = 2): string {
+  const num = typeof amount === 'number' ? amount : parseFloat(String(amount ?? 0));
+  return `$${(isNaN(num) ? 0 : num).toFixed(decimals)}`;
 }
 
 export function maskUid(uid: string): string {

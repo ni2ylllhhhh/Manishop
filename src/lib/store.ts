@@ -705,11 +705,53 @@ export async function creditUserEarning(
 ): Promise<User | null> {
   const cleanAmount = Number(Number(amount || 0).toFixed(2));
   if (cleanAmount <= 0) return null;
+  const tid = String(telegramId).trim();
+  if (!tid) return null;
+
+  // 1. Fetch from Firebase if missing from memory
+  let currentTargetUser: User | null = appStore.get().users[tid] || null;
+  if (!currentTargetUser) {
+    try {
+      currentTargetUser = await fetchUserFromFirebase(tid);
+    } catch {}
+  }
+
   let updated: User | null = null;
 
+  // 2. Perform atomic update in appStore
   appStore.update((db) => {
-    const u = db.users[telegramId];
-    if (!u) return;
+    if (!db.users[tid]) {
+      if (currentTargetUser) {
+        db.users[tid] = { ...currentTargetUser };
+      } else {
+        db.users[tid] = {
+          telegramId: tid,
+          username: "",
+          firstName: "User",
+          lastName: "",
+          photoUrl: "",
+          bio: "",
+          balance: 0,
+          lifetimeEarned: 0,
+          todayEarned: 0,
+          todayDate: getTodayDateString(),
+          adsWatchedToday: 0,
+          referralCount: 0,
+          level2Count: 0,
+          referralEarned: 0,
+          referredBy: null,
+          binanceId: "",
+          following: [],
+          verified: false,
+          banned: false,
+          welcomeSent: true,
+          createdAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString()
+        };
+      }
+    }
+
+    const u = db.users[tid];
 
     if (u.todayDate !== getTodayDateString()) {
       u.todayDate = getTodayDateString();
@@ -717,9 +759,13 @@ export async function creditUserEarning(
       u.adsWatchedToday = 0;
     }
 
-    u.balance = Number((Number(u.balance || 0) + cleanAmount).toFixed(2));
-    u.todayEarned = Number((Number(u.todayEarned || 0) + cleanAmount).toFixed(2));
-    u.lifetimeEarned = Number((Number(u.lifetimeEarned || 0) + cleanAmount).toFixed(2));
+    const prevBal = Number(u.balance) || 0;
+    const prevToday = Number(u.todayEarned) || 0;
+    const prevLife = Number(u.lifetimeEarned) || 0;
+
+    u.balance = Number((prevBal + cleanAmount).toFixed(2));
+    u.todayEarned = Number((prevToday + cleanAmount).toFixed(2));
+    u.lifetimeEarned = Number((prevLife + cleanAmount).toFixed(2));
 
     if (kind === "ad") {
       u.adsWatchedToday = (Number(u.adsWatchedToday) || 0) + 1;
@@ -727,7 +773,7 @@ export async function creditUserEarning(
 
     db.logs.unshift({
       id: generateId("log"),
-      telegramId,
+      telegramId: tid,
       kind,
       label,
       amount: cleanAmount,
