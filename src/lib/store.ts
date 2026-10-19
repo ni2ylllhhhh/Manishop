@@ -703,6 +703,8 @@ export async function creditUserEarning(
   label: string,
   amount: number
 ): Promise<User | null> {
+  const cleanAmount = Number(Number(amount || 0).toFixed(2));
+  if (cleanAmount <= 0) return null;
   let updated: User | null = null;
 
   appStore.update((db) => {
@@ -715,12 +717,12 @@ export async function creditUserEarning(
       u.adsWatchedToday = 0;
     }
 
-    u.balance += amount;
-    u.todayEarned += amount;
-    u.lifetimeEarned += amount;
+    u.balance = Number((Number(u.balance || 0) + cleanAmount).toFixed(2));
+    u.todayEarned = Number((Number(u.todayEarned || 0) + cleanAmount).toFixed(2));
+    u.lifetimeEarned = Number((Number(u.lifetimeEarned || 0) + cleanAmount).toFixed(2));
 
     if (kind === "ad") {
-      u.adsWatchedToday += 1;
+      u.adsWatchedToday = (Number(u.adsWatchedToday) || 0) + 1;
     }
 
     db.logs.unshift({
@@ -728,7 +730,7 @@ export async function creditUserEarning(
       telegramId,
       kind,
       label,
-      amount,
+      amount: cleanAmount,
       createdAt: new Date().toISOString()
     });
 
@@ -736,7 +738,7 @@ export async function creditUserEarning(
   });
 
   if (updated) {
-    syncUserToFirebase(updated);
+    await syncUserToFirebase(updated);
   }
 
   return updated;

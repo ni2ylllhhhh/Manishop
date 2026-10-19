@@ -32,6 +32,7 @@ interface AuthContextType {
   logout: () => void;
   startAd: (slot: AdSlot) => Promise<void>;
   startTask: (task: Task) => Promise<void>;
+  claimPendingReward: () => Promise<void>;
   pending: PendingAction | null;
   adsWatchedToday: number;
   slotCountToday: (slotId: string) => number;
@@ -346,32 +347,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const act = getPendingAction();
     if (!act || !sessionTid) return;
 
+    const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
+
+    // Check expiration
+    if (elapsedSeconds > act.maxMinutes * 60) {
+      clearPendingAction();
+      setPending(null);
+      triggerHaptic('error');
+      toast.error('টাস্ক সেশন শেষ হয়েছে', {
+        description: `সর্বোচ্চ ${act.maxMinutes} মিনিটের মধ্যে সম্পন্ন করতে হয়।`
+      });
+      return;
+    }
+
+    // If still in progress, DO NOT DELETE! Keep pending action alive!
+    if (elapsedSeconds < act.minSeconds) {
+      setPending(act);
+      return;
+    }
+
+    // Time satisfied! Credit the reward cleanly!
     clearPendingAction();
     setPending(null);
 
-    const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
-    if (elapsedSeconds < act.minSeconds) {
-      triggerHaptic('error');
-      toast.error('ব্যালেন্স যোগ হয়নি!', {
-        description: `নূন্যতম ${act.minSeconds} সেকেন্ড (১ মিনিট) সাইটে থাকতে হবে। আপনি ${Math.floor(elapsedSeconds)} সেকেন্ডে ফিরে এসেছেন।`
-      });
-      return;
-    }
-
-    if (elapsedSeconds > act.maxMinutes * 60) {
-      triggerHaptic('error');
-      toast.error('সেশন এক্সপায়ার হয়েছে', {
-        description: `সর্বোচ্চ ${act.maxMinutes} মিনিটের মধ্যে সম্পন্ন করতে হবে।`
-      });
-      return;
-    }
-
-    await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
+    const updated = await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
     triggerHaptic('success');
-    toast.success(`+$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
-      description: act.label
+    toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
+      description: `${act.label} সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${(updated?.balance || 0).toFixed(2)} USDT`
     });
   }, [sessionTid]);
+
+  // Real-time 1-second ticker when an action is pending to auto-credit immediately upon completion
+  useEffect(() => {
+    if (!pending || !sessionTid) return;
+
+    const interval = setInterval(() => {
+      const act = getPendingAction();
+      if (!act) {
+        setPending(null);
+        return;
+      }
+      const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
+      if (elapsedSeconds >= act.minSeconds) {
+        claimPendingReward();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [pending, sessionTid, claimPendingReward]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -519,6 +542,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout: handleLogout,
     startAd,
     startTask,
+    claimPendingReward,
     pending,
     adsWatchedToday,
     slotCountToday,
