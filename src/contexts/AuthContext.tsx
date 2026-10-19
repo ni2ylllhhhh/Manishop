@@ -349,65 +349,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
 
-    // Check expiration
-    if (elapsedSeconds > act.maxMinutes * 60) {
+    // Transition buffer: ignore if user tapped link less than 4 seconds ago
+    if (elapsedSeconds < 4) {
+      return;
+    }
+
+    // 1. Returned too early (within 1 minute / 60 seconds):
+    // সেশন বাতিল হয়ে যাবে এক মিনিটের মধ্যে যদি ওয়েবসাইটে আসে
+    if (elapsedSeconds < 60) {
       clearPendingAction();
       setPending(null);
       triggerHaptic('error');
-      toast.error('টাস্ক সেশন শেষ হয়েছে', {
-        description: `সর্বোচ্চ ${act.maxMinutes} মিনিটের মধ্যে সম্পন্ন করতে হয়।`
+      toast.error('ব্যালেন্স যোগ হয়নি!', {
+        description: `নূন্যতম ১ মিনিট (৬০ সেকেন্ড) বিজ্ঞাপনের সাইটে থাকতে হবে। আপনি ${Math.floor(elapsedSeconds)} সেকেন্ডে ফিরে এসেছেন। সেশন বাতিল করা হয়েছে।`
       });
       return;
     }
 
-    // If still in progress, DO NOT DELETE! Keep pending action alive!
-    if (elapsedSeconds < act.minSeconds) {
-      setPending(act);
+    // 2. Returned after 6 minutes (360 seconds):
+    if (elapsedSeconds > 360) {
+      clearPendingAction();
+      setPending(null);
+      triggerHaptic('error');
+      toast.error('সেশন এক্সপায়ার হয়েছে', {
+        description: 'বিজ্ঞাপন দেখার পর সর্বোচ্চ ৬ মিনিটের মধ্যে অ্যাপে ফিরে আসতে হবে।'
+      });
       return;
     }
 
-    // Time satisfied! Credit the reward cleanly!
+    // 3. User stayed for at least 1 minute (60s) and returned within 6 minutes (360s):
     clearPendingAction();
     setPending(null);
 
     const updated = await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
     triggerHaptic('success');
     toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
-      description: `${act.label} সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${(updated?.balance || 0).toFixed(2)} USDT`
+      description: `${act.label} সফলভাবে সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${(updated?.balance || 0).toFixed(2)} USDT`
     });
   }, [sessionTid]);
 
-  // Real-time 1-second ticker when an action is pending to auto-credit immediately upon completion
   useEffect(() => {
-    if (!pending || !sessionTid) return;
+    let timeoutId: any = null;
 
-    const interval = setInterval(() => {
-      const act = getPendingAction();
-      if (!act) {
-        setPending(null);
-        return;
-      }
-      const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
-      if (elapsedSeconds >= act.minSeconds) {
-        claimPendingReward();
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [pending, sessionTid, claimPendingReward]);
-
-  useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        claimPendingReward();
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          claimPendingReward();
+        }, 300);
       }
     };
 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onVisibility);
-    claimPendingReward();
 
     return () => {
+      clearTimeout(timeoutId);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onVisibility);
     };
@@ -470,7 +467,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Both buttons redirect directly to the requested worker URL without Monetag popup
       const targetAdUrl = "https://ads.ziniyaapu7.workers.dev/";
-      const requiredSeconds = Math.max(60, config.adMinSeconds || 60);
+      const requiredSeconds = 60; // 1 minute required on ad site
+      const maxMinutes = 6; // 6 minutes limit to return
 
       const action: PendingAction = {
         kind: 'ad',
@@ -478,7 +476,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         label: `${slot.title} (${slot.id})`,
         reward: slot.reward,
         minSeconds: requiredSeconds,
-        maxMinutes: config.adMaxMinutes,
+        maxMinutes: maxMinutes,
         startedAt: Date.now()
       };
 
@@ -487,12 +485,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       triggerHaptic('medium');
 
       toast('বিজ্ঞাপন ভিজিট শুরু হয়েছে', {
-        description: 'লিঙ্কে নূন্যতম ১ মিনিট (৬০ সেকেন্ড) থাকুন। ১ মিনিটের আগে ফিরে আসলে ব্যালেন্স যোগ হবে না।'
+        description: 'বিজ্ঞাপনের লিঙ্কে নূন্যতম ১ মিনিট (৬০ সেকেন্ড) থাকুন। ১ মিনিটের আগে ফিরে আসলে সেশন বাতিল হবে। ১ মিনিট পর ৬ মিনিটের মধ্যে ফিরে আসলে টাকা যোগ হবে।'
       });
 
       openExternalLink(targetAdUrl);
     },
-    [sessionTid, config, slotCountThisHour, hourlyLimitPerSlot]
+    [sessionTid, slotCountThisHour, hourlyLimitPerSlot]
   );
 
   const startTask = useCallback(
@@ -506,8 +504,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refId: task.id,
         label: task.title,
         reward: task.reward,
-        minSeconds: task.minSeconds,
-        maxMinutes: task.maxMinutes,
+        minSeconds: 60,
+        maxMinutes: 6,
         startedAt: Date.now()
       };
 
@@ -516,7 +514,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       triggerHaptic('medium');
 
       toast('টাস্ক শুরু হয়েছে', {
-        description: `লিঙ্কে নূন্যতম ${task.minSeconds} সেকেন্ড থাকুন। সম্পন্ন হলে ব্যালেন্স যোগ হবে।`
+        description: 'লিঙ্কে নূন্যতম ১ মিনিট (৬০ সেকেন্ড) থাকুন। ১ মিনিটের আগে ফিরে আসলে সেশন বাতিল হবে। ১ মিনিট পর ৬ মিনিটের মধ্যে ফিরে আসলে টাকা যোগ হবে।'
       });
 
       openExternalLink(targetTaskUrl);
