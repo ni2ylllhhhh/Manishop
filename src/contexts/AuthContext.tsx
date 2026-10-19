@@ -347,29 +347,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const act = getPendingAction();
     if (!act || !sessionTid) return;
 
+    // Immediately clear pending action so session cannot be re-used
+    clearPendingAction();
+    setPending(null);
+
     const elapsedSeconds = (Date.now() - act.startedAt) / 1000;
 
-    // Transition buffer: ignore if user tapped link less than 4 seconds ago
-    if (elapsedSeconds < 4) {
-      return;
-    }
-
-    // 1. Returned too early (within 1 minute / 60 seconds):
-    // সেশন বাতিল হয়ে যাবে এক মিনিটের মধ্যে যদি ওয়েবসাইটে আসে
+    // 1. Returned before 1 minute (less than 60 seconds):
+    // লগে লগে সেশন বাতিল এবং উপরে নোটিশ
     if (elapsedSeconds < 60) {
-      clearPendingAction();
-      setPending(null);
       triggerHaptic('error');
       toast.error('ব্যালেন্স যোগ হয়নি!', {
-        description: `নূন্যতম ১ মিনিট (৬০ সেকেন্ড) বিজ্ঞাপনের সাইটে থাকতে হবে। আপনি ${Math.floor(elapsedSeconds)} সেকেন্ডে ফিরে এসেছেন। সেশন বাতিল করা হয়েছে।`
+        description: `আপনি ১ মিনিট থাকেন নাই। নূন্যতম ১ মিনিট (৬০ সেকেন্ড) বিজ্ঞাপনের সাইটে থাকতে হবে। আপনি মাত্র ${Math.floor(elapsedSeconds)} সেকেন্ডে ফিরে এসেছেন। সেশন বাতিল করা হয়েছে।`
       });
       return;
     }
 
-    // 2. Returned after 6 minutes (360 seconds):
+    // 2. Returned after 6 minutes (more than 360 seconds):
     if (elapsedSeconds > 360) {
-      clearPendingAction();
-      setPending(null);
       triggerHaptic('error');
       toast.error('সেশন এক্সপায়ার হয়েছে', {
         description: 'বিজ্ঞাপন দেখার পর সর্বোচ্চ ৬ মিনিটের মধ্যে অ্যাপে ফিরে আসতে হবে।'
@@ -377,10 +372,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 3. User stayed for at least 1 minute (60s) and returned within 6 minutes (360s):
-    clearPendingAction();
-    setPending(null);
-
+    // 3. Returned after 1 minute (60s to 360s):
+    // টাকা সরাসরি ব্যালেন্সে যোগ হবে!
     const updated = await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
     triggerHaptic('success');
     toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
@@ -389,14 +382,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [sessionTid]);
 
   useEffect(() => {
-    let timeoutId: any = null;
-
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          claimPendingReward();
-        }, 300);
+        claimPendingReward();
       }
     };
 
@@ -404,7 +392,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('focus', onVisibility);
 
     return () => {
-      clearTimeout(timeoutId);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onVisibility);
     };
