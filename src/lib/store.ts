@@ -784,7 +784,33 @@ export async function creditUserEarning(
   });
 
   if (updated) {
-    await syncUserToFirebase(updated);
+    try {
+      await syncUserToFirebase(updated);
+    } catch (e) {
+      console.warn("[syncUserToFirebase failed]:", e);
+    }
+
+    try {
+      fetch("/api/user/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegramId: tid,
+          kind,
+          label,
+          amount: cleanAmount
+        })
+      }).then(async (res) => {
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data.ok && data.user) {
+            appStore.update((d) => {
+              d.users[tid] = { ...(d.users[tid] || {}), ...data.user };
+            });
+          }
+        }
+      }).catch((e) => console.warn("[Credit server API error]:", e));
+    } catch {}
   }
 
   return updated;

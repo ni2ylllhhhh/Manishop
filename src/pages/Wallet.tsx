@@ -19,14 +19,16 @@ export function Wallet() {
   const db = useAppStore();
   const navigate = useNavigate();
 
-  if (!user) return null;
+  const liveUser = (user?.telegramId && db.users[user.telegramId]) ? db.users[user.telegramId] : user;
 
-  const myWithdrawals = db.withdrawals.filter((w) => w.telegramId === user.telegramId);
-  const referralsNeeded = Math.max(0, config.minReferralsForWithdraw - user.referralCount);
+  if (!liveUser) return null;
+
+  const myWithdrawals = db.withdrawals.filter((w) => w.telegramId === liveUser.telegramId);
+  const referralsNeeded = Math.max(0, config.minReferralsForWithdraw - liveUser.referralCount);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayActionsCount = db.logs.filter(
-    (log) => log.telegramId === user.telegramId && log.createdAt.slice(0, 10) === todayStr
+    (log) => log.telegramId === liveUser.telegramId && log.createdAt.slice(0, 10) === todayStr
   ).length;
 
   return (
@@ -50,10 +52,10 @@ export function Wallet() {
       <section className="rounded-2xl bg-white p-4 text-center shadow-card">
         <p className="text-[12px] font-medium text-gray-400">Total Balance</p>
         <p className="mt-0.5 text-[32px] font-extrabold leading-tight text-ink">
-          ${user.balance.toFixed(3)}
+          ${liveUser.balance.toFixed(2)}
         </p>
         <p className="text-[11px] text-gray-400 font-medium">
-          Lifetime Earnings: ${user.lifetimeEarned.toFixed(3)}
+          Lifetime Earnings: ${liveUser.lifetimeEarned.toFixed(2)}
         </p>
 
         <div className="mt-3.5 flex gap-2">
@@ -84,7 +86,7 @@ export function Wallet() {
             </span>
           </div>
           <p className="mt-1 text-[22px] font-extrabold text-ink">
-            ${user.todayEarned.toFixed(3)}
+            ${liveUser.todayEarned.toFixed(2)}
           </p>
           <p className="text-[10px] text-gray-400">
             {todayActionsCount} earning actions
@@ -99,7 +101,7 @@ export function Wallet() {
             </span>
           </div>
           <p className="mt-1 text-[22px] font-extrabold text-ink">
-            {user.referralCount}
+            {liveUser.referralCount}
           </p>
           <p className="text-[10px] text-gray-400">
             {referralsNeeded > 0 ? `${referralsNeeded} more needed` : "Withdraw unlocked!"}

@@ -949,6 +949,85 @@ app.post("/api/bot/sync-profile", async (req, res) => {
   res.json({ ok });
 });
 
+// Guaranteed server-side balance credit endpoint
+app.post("/api/user/credit", async (req, res) => {
+  try {
+    const { telegramId, kind, label, amount } = req.body;
+    if (!telegramId || !amount || amount <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid_params" });
+    }
+
+    const tid = String(telegramId).trim();
+    const cleanAmount = Number(Number(amount).toFixed(2));
+
+    // 1. Fetch current user from Firebase RTDB
+    let user = await fetchFirebase<any>(`users/${tid}`);
+    if (!user) {
+      user = {
+        telegramId: tid,
+        username: "",
+        firstName: "User",
+        lastName: "",
+        photoUrl: "",
+        bio: "",
+        balance: 0,
+        lifetimeEarned: 0,
+        todayEarned: 0,
+        todayDate: new Date().toISOString().slice(0, 10),
+        adsWatchedToday: 0,
+        referralCount: 0,
+        level2Count: 0,
+        referralEarned: 0,
+        referredBy: null,
+        binanceId: "",
+        verified: false,
+        banned: false,
+        welcomeSent: true,
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (user.todayDate !== todayStr) {
+      user.todayDate = todayStr;
+      user.todayEarned = 0;
+      user.adsWatchedToday = 0;
+    }
+
+    const oldBalance = Number(user.balance) || 0;
+    const oldToday = Number(user.todayEarned) || 0;
+    const oldLifetime = Number(user.lifetimeEarned) || 0;
+
+    user.balance = Number((oldBalance + cleanAmount).toFixed(2));
+    user.todayEarned = Number((oldToday + cleanAmount).toFixed(2));
+    user.lifetimeEarned = Number((oldLifetime + cleanAmount).toFixed(2));
+    if (kind === "ad") {
+      user.adsWatchedToday = (Number(user.adsWatchedToday) || 0) + 1;
+    }
+    user.updatedAt = Date.now();
+
+    // 2. Put directly into Firebase RTDB
+    await putFirebase(`users/${tid}`, user);
+
+    // 3. Log earning
+    const logId = `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    await putFirebase(`logs/${logId}`, {
+      id: logId,
+      telegramId: tid,
+      kind: kind || "ad",
+      label: label || "Ad Reward",
+      amount: cleanAmount,
+      createdAt: new Date().toISOString()
+    });
+
+    console.log(`[Balance Credit] User ${tid} credited +$${cleanAmount}. New balance: $${user.balance}`);
+    return res.json({ ok: true, user });
+  } catch (err) {
+    console.warn("[Balance Credit Error]:", err);
+    return res.status(500).json({ ok: false, error: "internal_error" });
+  }
+});
+
 // Setup Vite / Static Serving
 async function startServer() {
   const isProd = process.env.NODE_ENV === "production";

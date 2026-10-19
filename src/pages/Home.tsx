@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { CirclePlay, Play, Zap, Globe, LoaderCircle } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, useAppStore } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { formatUsd } from '../lib/format';
 
@@ -15,8 +15,11 @@ export function Home() {
     totalAdsWatchedThisHour,
     hourlyLimitPerSlot
   } = useAuth();
+  const db = useAppStore();
 
-  if (!user) return null;
+  const liveUser = (user?.telegramId && db.users[user.telegramId]) ? db.users[user.telegramId] : user;
+
+  if (!liveUser) return null;
 
   const totalPossibleThisHour = config.adSlots.length * hourlyLimitPerSlot;
 
@@ -24,13 +27,13 @@ export function Home() {
     <main className="px-3 pt-3">
       {/* User Header Card */}
       <section className="mb-3 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 shadow-card">
-        <Avatar src={user.photoUrl} name={user.firstName} size={38} />
+        <Avatar src={liveUser.photoUrl} name={liveUser.firstName} size={38} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-bold text-ink">
-            {user.firstName} {user.lastName}
+            {liveUser.firstName} {liveUser.lastName}
           </p>
           <p className="truncate text-[10px] text-gray-400 font-mono">
-            ID: {user.telegramId}
+            ID: {liveUser.telegramId}
           </p>
         </div>
         <div className="rounded-xl bg-brand-50 px-2.5 py-1 text-right">
@@ -38,7 +41,7 @@ export function Home() {
             Balance
           </p>
           <p className="text-[13px] font-extrabold text-ink">
-            {formatUsd(user.balance)}
+            {formatUsd(liveUser.balance)}
           </p>
         </div>
       </section>
