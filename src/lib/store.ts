@@ -1,6 +1,7 @@
 import type { AppConfig, AppDatabase, User, Referral, Withdrawal, Post, EarningLog } from '../types';
 import {
   syncUserToFirebase,
+  updateUserProfileLogin,
   fetchUserFromFirebase,
   syncWithdrawalToFirebase,
   syncReferralToFirebase
@@ -304,6 +305,7 @@ export async function loginOrRegisterUser(
   let refToSync: Referral | null = null;
   let grandParentToSync: User | null = null;
   let grandRefToSync: Referral | null = null;
+  let isBrandNewUser = false;
   const messagesToSend: Array<{ chatId: string | number; text: string; replyMarkup?: any }> = [];
 
   // Check if we already have the user cached locally in appStore
@@ -369,6 +371,7 @@ export async function loginOrRegisterUser(
       db.users[tid] = existing;
     } else {
       existing = null;
+      isBrandNewUser = true;
     }
 
     if (cleanReferrer && remoteParent) {
@@ -712,7 +715,9 @@ export async function loginOrRegisterUser(
 
   // 3. Sync to Firebase in parallel
   await Promise.allSettled([
-    user! ? syncUserToFirebase(user!) : Promise.resolve(),
+    user!
+      ? (isBrandNewUser ? syncUserToFirebase(user!) : updateUserProfileLogin(user!))
+      : Promise.resolve(),
     parentToSync ? syncUserToFirebase(parentToSync) : Promise.resolve(),
     refToSync ? syncReferralToFirebase(refToSync) : Promise.resolve(),
     grandParentToSync ? syncUserToFirebase(grandParentToSync) : Promise.resolve(),

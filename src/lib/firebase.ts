@@ -65,10 +65,43 @@ export async function syncUserToFirebase(user: User): Promise<void> {
 }
 
 /**
- * Fetch a single user record from Firebase
+ * Lightweight profile-only update on login.
+ * CRITICAL: NEVER overwrites or touches balance, earnings, or stats!
+ */
+export async function updateUserProfileLogin(user: User): Promise<void> {
+  if (!user || !user.telegramId) return;
+  try {
+    const userRef = rtdbRef(rtdb, `users/${user.telegramId}`);
+    await update(userRef, {
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      username: user.username || "",
+      photoUrl: user.photoUrl || "",
+      lastLogin: new Date().toISOString(),
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    console.warn("[Firebase RTDB] updateUserProfileLogin error:", err);
+  }
+}
+
+/**
+ * Fetch a single user record from Firebase (Fast direct REST first, SDK fallback)
  */
 export async function fetchUserFromFirebase(telegramId: string): Promise<User | null> {
   if (!telegramId) return null;
+  // 1. Ultra-fast direct HTTPS REST (works even if WebSocket is disconnected or lagging)
+  try {
+    const res = await fetch(`https://maneishopbd-default-rtdb.firebaseio.com/users/${telegramId}.json`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.telegramId) {
+        return data as User;
+      }
+    }
+  } catch {}
+
+  // 2. Fallback to Firebase SDK
   try {
     const userRef = rtdbRef(rtdb, `users/${telegramId}`);
     const snap = await get(userRef);
