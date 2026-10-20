@@ -309,12 +309,24 @@ export async function loginOrRegisterUser(
   // Check if we already have the user cached locally in appStore
   const localExisting = appStore.get().users[tid];
 
-  // Fetch latest state of this user from Firebase
+  // Fetch latest state of this user from Firebase (SDK + REST fallback)
   let remoteUser: User | null = null;
   try {
-    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3000));
+    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 5000));
     remoteUser = await Promise.race([fetchUserFromFirebase(tid), timeoutPromise]);
   } catch {}
+
+  if (!remoteUser) {
+    try {
+      const restRes = await fetch(`https://maneishopbd-default-rtdb.firebaseio.com/users/${tid}.json`);
+      if (restRes.ok) {
+        const json = await restRes.json();
+        if (json && json.telegramId) {
+          remoteUser = json as User;
+        }
+      }
+    } catch {}
+  }
 
   const cleanReferrer = referredBy && String(referredBy).trim() !== tid ? String(referredBy).trim() : null;
   let remoteParent: User | null = null;
@@ -322,27 +334,40 @@ export async function loginOrRegisterUser(
 
   if (cleanReferrer) {
     try {
-      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3500));
+      const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
       remoteParent = await Promise.race([fetchUserFromFirebase(cleanReferrer), timeoutPromise]);
     } catch {}
 
     if (remoteParent?.referredBy && remoteParent.referredBy !== tid && remoteParent.referredBy !== cleanReferrer) {
       try {
-        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2500));
+        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 3000));
         remoteGrandParent = await Promise.race([fetchUserFromFirebase(remoteParent.referredBy), timeoutPromise]);
       } catch {}
     }
   }
 
   appStore.update((db) => {
-    // If user does not exist in Firebase (e.g. deleted by admin or brand new),
-    // stale cached user data must be purged so they register completely fresh!
+    const localUser = db.users[tid] || localExisting || null;
     let existing: User | null = null;
+
     if (remoteUser && remoteUser.telegramId) {
-      existing = { ...remoteUser };
+      existing = {
+        ...(localUser || {}),
+        ...remoteUser,
+        // Balance, lifetimeEarned, and todayEarned can NEVER decrease due to stale caches or timeouts
+        balance: Number(Math.max(Number(localUser?.balance || 0), Number(remoteUser.balance || 0)).toFixed(2)),
+        lifetimeEarned: Number(Math.max(Number(localUser?.lifetimeEarned || 0), Number(remoteUser.lifetimeEarned || 0)).toFixed(2)),
+        todayEarned: Number(Math.max(Number(localUser?.todayEarned || 0), Number(remoteUser.todayEarned || 0)).toFixed(2)),
+        referralCount: Math.max(Number(localUser?.referralCount || 0), Number(remoteUser.referralCount || 0)),
+        referralEarned: Number(Math.max(Number(localUser?.referralEarned || 0), Number(remoteUser.referralEarned || 0)).toFixed(2)),
+        verified: Boolean(localUser?.verified || remoteUser?.verified)
+      };
+      db.users[tid] = existing;
+    } else if (localUser && localUser.telegramId) {
+      // Remote fetch timed out or network offline: KEEP THE USER'S LOCAL DATA AND MONEY SAFE!
+      existing = { ...localUser };
       db.users[tid] = existing;
     } else {
-      delete db.users[tid];
       existing = null;
     }
 
@@ -771,25 +796,54 @@ export async function creditUserEarning(
       u.adsWatchedToday = (Number(u.adsWatchedToday) || 0) + 1;
     }
 
-    db.logs.unshift({
+    const newLog = {
       id: generateId("log"),
       telegramId: tid,
       kind,
       label,
       amount: cleanAmount,
       createdAt: new Date().toISOString()
-    });
+    };
+    db.logs.unshift(newLog);
 
     updated = { ...u };
+
+    // Direct background sync of log to Firebase RTDB
+    try {
+      fetch(`https://maneishopbd-default-rtdb.firebaseio.com/logs/${newLog.id}.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newLog)
+      }).catch(() => {});
+    } catch {}
   });
 
-  if (updated) {
+  const finalUser = updated as User | null;
+  if (finalUser) {
+    // 1. Firebase SDK Realtime Database sync
     try {
-      await syncUserToFirebase(updated);
+      await syncUserToFirebase(finalUser);
     } catch (e) {
       console.warn("[syncUserToFirebase failed]:", e);
     }
 
+    // 2. Direct HTTP REST PATCH to Firebase RTDB (bypasses any reconnecting WebSocket)
+    try {
+      fetch(`https://maneishopbd-default-rtdb.firebaseio.com/users/${tid}.json`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          balance: finalUser.balance,
+          todayEarned: finalUser.todayEarned,
+          lifetimeEarned: finalUser.lifetimeEarned,
+          adsWatchedToday: finalUser.adsWatchedToday,
+          todayDate: finalUser.todayDate,
+          updatedAt: Date.now()
+        })
+      }).catch(() => {});
+    } catch {}
+
+    // 3. Backend API credit endpoint (works on both Express server and Cloudflare Worker)
     try {
       fetch("/api/user/credit", {
         method: "POST",
@@ -805,7 +859,13 @@ export async function creditUserEarning(
           const data = await res.json().catch(() => ({}));
           if (data.ok && data.user) {
             appStore.update((d) => {
-              d.users[tid] = { ...(d.users[tid] || {}), ...data.user };
+              const cur = d.users[tid];
+              if (cur) {
+                cur.balance = Number(Math.max(Number(cur.balance || 0), Number(data.user.balance || 0)).toFixed(2));
+                cur.lifetimeEarned = Number(Math.max(Number(cur.lifetimeEarned || 0), Number(data.user.lifetimeEarned || 0)).toFixed(2));
+                cur.todayEarned = Number(Math.max(Number(cur.todayEarned || 0), Number(data.user.todayEarned || 0)).toFixed(2));
+                cur.adsWatchedToday = Math.max(Number(cur.adsWatchedToday || 0), Number(data.user.adsWatchedToday || 0));
+              }
             });
           }
         }

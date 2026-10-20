@@ -212,6 +212,119 @@ export default {
       }
     }
 
+    // 2c. Guaranteed Balance Credit Endpoint
+    if (url.pathname === "/api/user/credit") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+          }
+        });
+      }
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          const { telegramId, kind, label, amount } = body || {};
+          const tid = String(telegramId || "").trim();
+          const cleanAmount = Number(Number(amount || 0).toFixed(2));
+          if (!tid || cleanAmount <= 0) {
+            return new Response(JSON.stringify({ ok: false, error: "invalid_params" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+
+          let user = null;
+          try {
+            const uRes = await fetch(`${RTDB_URL}/users/${tid}.json`);
+            if (uRes.ok) user = await uRes.json();
+          } catch {}
+
+          const now = new Date().toISOString();
+          const todayStr = now.slice(0, 10);
+
+          if (!user) {
+            user = {
+              telegramId: tid,
+              username: "",
+              firstName: "User",
+              lastName: "",
+              photoUrl: "",
+              bio: "",
+              balance: 0,
+              lifetimeEarned: 0,
+              todayEarned: 0,
+              todayDate: todayStr,
+              adsWatchedToday: 0,
+              referralCount: 0,
+              level2Count: 0,
+              referralEarned: 0,
+              referredBy: null,
+              binanceId: "",
+              following: [],
+              verified: false,
+              banned: false,
+              welcomeSent: true,
+              createdAt: now,
+              lastLogin: now
+            };
+          }
+
+          if (user.todayDate !== todayStr) {
+            user.todayDate = todayStr;
+            user.todayEarned = 0;
+            user.adsWatchedToday = 0;
+          }
+
+          const oldBal = Number(user.balance) || 0;
+          const oldToday = Number(user.todayEarned) || 0;
+          const oldLife = Number(user.lifetimeEarned) || 0;
+
+          user.balance = Number((oldBal + cleanAmount).toFixed(2));
+          user.todayEarned = Number((oldToday + cleanAmount).toFixed(2));
+          user.lifetimeEarned = Number((oldLife + cleanAmount).toFixed(2));
+          if (kind === "ad") {
+            user.adsWatchedToday = (Number(user.adsWatchedToday) || 0) + 1;
+          }
+          user.updatedAt = Date.now();
+
+          // Save user to Firebase RTDB
+          await fetch(`${RTDB_URL}/users/${tid}.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(user)
+          });
+
+          // Save log to Firebase RTDB
+          const logId = `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+          await fetch(`${RTDB_URL}/logs/${logId}.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: logId,
+              telegramId: tid,
+              kind: kind || "ad",
+              label: label || "Ad Reward",
+              amount: cleanAmount,
+              createdAt: now
+            })
+          });
+
+          return new Response(JSON.stringify({ ok: true, user }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+      }
+    }
+
     // 3. Telegram Check-Member Proxy Endpoint
     if (url.pathname === "/api/check-member" && request.method === "GET") {
       const channel = (url.searchParams.get("channel") || "").replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, "").replace(/^@/, "").split("/")[0].split("?")[0].trim();

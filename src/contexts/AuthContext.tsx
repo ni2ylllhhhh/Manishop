@@ -197,9 +197,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       appStore.update((draft) => {
+        const cur = draft.users[sessionTid];
         draft.users[sessionTid] = {
-          ...(draft.users[sessionTid] || {}),
-          ...remote
+          ...(cur || {}),
+          ...remote,
+          balance: Number(Math.max(Number(cur?.balance || 0), Number(remote.balance || 0)).toFixed(2)),
+          lifetimeEarned: Number(Math.max(Number(cur?.lifetimeEarned || 0), Number(remote.lifetimeEarned || 0)).toFixed(2)),
+          todayEarned: Number(Math.max(Number(cur?.todayEarned || 0), Number(remote.todayEarned || 0)).toFixed(2)),
+          adsWatchedToday: Math.max(Number(cur?.adsWatchedToday || 0), Number(remote.adsWatchedToday || 0)),
+          referralCount: Math.max(Number(cur?.referralCount || 0), Number(remote.referralCount || 0))
         } as User;
       });
 
@@ -250,7 +256,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           for (const [uid, u] of Object.entries(remoteUsers)) {
             if (!fakeIds.has(uid) && u && u.telegramId) {
-              d.users[uid] = { ...(d.users[uid] || {}), ...u };
+              const cur = d.users[uid];
+              d.users[uid] = {
+                ...(cur || {}),
+                ...u,
+                balance: Number(Math.max(Number(cur?.balance || 0), Number(u.balance || 0)).toFixed(2)),
+                lifetimeEarned: Number(Math.max(Number(cur?.lifetimeEarned || 0), Number(u.lifetimeEarned || 0)).toFixed(2)),
+                todayEarned: Number(Math.max(Number(cur?.todayEarned || 0), Number(u.todayEarned || 0)).toFixed(2)),
+                adsWatchedToday: Math.max(Number(cur?.adsWatchedToday || 0), Number(u.adsWatchedToday || 0)),
+                referralCount: Math.max(Number(cur?.referralCount || 0), Number(u.referralCount || 0))
+              };
             }
           }
         });
@@ -373,16 +388,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // 3. Returned after 1 minute (60s to 360s):
-    // টাকা সরাসরি ব্যালেন্সে যোগ হবে!
+    // টাকা সরাসরি মূল ব্যালেন্সে যোগ হবে!
     const updated = await creditUserEarning(sessionTid, act.kind, act.label, act.reward);
     if (updated) {
       triggerHaptic('success');
-      toast.success(`🎉 +$${act.reward.toFixed(2)} ব্যালেন্সে যোগ হয়েছে!`, {
+      toast.success(`🎉 +$${act.reward.toFixed(2)} মূল ব্যালেন্সে যোগ হয়েছে!`, {
         description: `${act.label} সফলভাবে সম্পন্ন হয়েছে। বর্তমান ব্যালেন্স: $${updated.balance.toFixed(2)} USDT`
       });
     }
   }, [sessionTid]);
 
+  // 1. Trigger when document becomes visible or focused
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -397,6 +413,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onVisibility);
     };
+  }, [claimPendingReward]);
+
+  // 2. Trigger on startup / status ready if a pending reward exists in storage
+  useEffect(() => {
+    if (status === 'ready' && getPendingAction()) {
+      claimPendingReward();
+    }
+  }, [status, claimPendingReward]);
+
+  // 3. Auto-claim polling watcher every 2.5 seconds while user is viewing the app
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && getPendingAction()) {
+        claimPendingReward();
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [claimPendingReward]);
+
+  // 4. Trigger on any tap/click inside the app
+  useEffect(() => {
+    const onUserInteraction = () => {
+      if (getPendingAction()) {
+        claimPendingReward();
+      }
+    };
+    window.addEventListener('pointerdown', onUserInteraction, { passive: true });
+    return () => window.removeEventListener('pointerdown', onUserInteraction);
   }, [claimPendingReward]);
 
   const slotCountToday = useCallback(
