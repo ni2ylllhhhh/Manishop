@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Copy, Check, Send, Info, Users } from 'lucide-react';
+import { Copy, Check, Send, Info } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppStore } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
@@ -147,21 +147,15 @@ export function Refer() {
         </div>
 
         {activeTab === 'overview' ? (
-          <div className="flex flex-col items-center px-3 py-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-[13px] font-extrabold text-white shadow-md">
-              YOU
-            </div>
-
-            <div className="mt-3 grid w-full grid-cols-2 gap-2">
-              <InfoBox label="Level 1 Bonus" value={`$${config.referralBonus.toFixed(2)}`} />
-              <InfoBox label="Level 2 Bonus" value={`$${config.level2Bonus.toFixed(2)}`} />
-              <InfoBox label="Total Referrals" value={String(l1.length + l2.length)} />
-              <InfoBox label="Referral Income" value={`$${user.referralEarned.toFixed(2)}`} />
-            </div>
-
-            <p className="mt-3 text-center text-[10.5px] leading-relaxed text-gray-500">
-              Withdraw করার জন্য নূন্যতম <b>{config.minReferralsForWithdraw} জন</b> সফল রেফার প্রয়োজন। (আপনার রেফার: <b>{user.referralCount} জন</b>)
-            </p>
+          <div className="p-2.5">
+            <img
+              src="/refer-banner.webp"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "https://i.ibb.co/B5mTVMwy/Share.webp";
+              }}
+              alt="Referral Rules & Guide"
+              className="w-full h-auto rounded-xl object-contain shadow-sm"
+            />
           </div>
         ) : (
           <ul className="divide-y divide-black/5">
@@ -201,15 +195,6 @@ function StatPill({ label, value, tone }: { label: string; value: string; tone: 
     <div className="rounded-2xl bg-white px-1.5 py-2 text-center shadow-card">
       <p className="text-[8.5px] font-extrabold tracking-wide text-gray-400">{label}</p>
       <p className={`mt-0.5 text-[15px] font-extrabold ${tone}`}>{value}</p>
-    </div>
-  );
-}
-
-function InfoBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-cream px-2.5 py-2 border border-black/5">
-      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-      <p className="text-[13px] font-extrabold text-ink">{value}</p>
     </div>
   );
 }
