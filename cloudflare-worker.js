@@ -160,23 +160,6 @@ async function handleTelegramUpdate(update, env) {
   const lastName = message.from?.last_name || "";
   const username = message.from?.username || "";
 
-  // Handle /admin command in Telegram bot
-  if (text === "/admin" || text.startsWith("/admin")) {
-    const adminUrl = "https://manishop.ziniyaapu7.workers.dev/admin";
-    await sendTelegramMessage(
-      chatId,
-      `🛡️ <b>ManeiShop Admin Panel</b>\n\nএডমিন প্যানেলে প্রবেশ করতে নিচের বাটনে চাপুন:\n\n🔑 <b>Default PIN:</b> <code>445566</code> (অথবা <code>1234</code>)`,
-      {
-        inline_keyboard: [
-          [{ text: "🔐 Open Admin Panel (Mini App)", web_app: { url: adminUrl } }],
-          [{ text: "🌐 Open in Web Browser", url: adminUrl }]
-        ]
-      },
-      activeToken
-    );
-    return;
-  }
-
   const isStart = text.startsWith("/start");
   let referrerId = null;
   if (isStart) {

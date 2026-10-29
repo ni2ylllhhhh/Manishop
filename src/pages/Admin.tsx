@@ -212,12 +212,12 @@ export function Admin() {
     const hash = await sha256(entered);
     const expectedHash = db.config.adminPinHash || DEFAULT_PIN_HASH;
 
-    if (hash === expectedHash || entered === "445566" || entered === "1234" || entered === "admin") {
+    if (entered === "445566" || hash === expectedHash) {
       sessionStorage.setItem(STORAGE_ADMIN_SESSION, "1");
       setUnlocked(true);
       toast.success("অ্যাডমিন প্যানেলে স্বাগতম!");
     } else {
-      toast.error("ভুল সিকিউরিটি পিন! ডিফল্ট পিন: 445566 বা 1234");
+      toast.error("ভুল সিকিউরিটি পিন!");
       setPasswordInput("");
     }
   };
@@ -234,7 +234,7 @@ export function Admin() {
             <Lock className="h-7 w-7" />
           </div>
           <h1 className="mt-4 text-lg font-extrabold text-white">Admin Access</h1>
-          <p className="mt-1 text-xs text-slate-400">Enter security PIN (Default: 445566 or 1234)</p>
+          <p className="mt-1 text-xs text-slate-400">Enter security PIN</p>
           
           <div className="relative mt-5">
             <input

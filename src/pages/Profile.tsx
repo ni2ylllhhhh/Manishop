@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings as SettingsIcon,
@@ -6,8 +6,7 @@ import {
   User as UserIcon,
   Send,
   Link as LinkIcon,
-  Trophy,
-  ShieldCheck
+  Trophy
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
@@ -16,19 +15,6 @@ import { formatDate } from '../lib/format';
 export function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tapCount, setTapCount] = useState(0);
-
-  const handleSecretTap = () => {
-    setTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 5) {
-        navigate('/admin');
-        return 0;
-      }
-      return next;
-    });
-    setTimeout(() => setTapCount(0), 3000);
-  };
 
   const rankTier = useMemo(() => {
     const refs = user?.referralCount ?? 0;
@@ -52,16 +38,8 @@ export function Profile() {
           >
             <SettingsIcon className="h-4 w-4 text-brand-500" />
           </button>
-          <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink cursor-pointer">Profile</h1>
+          <h1 className="text-[15px] font-extrabold text-ink">Profile</h1>
         </div>
-
-        <button
-          onClick={() => navigate('/admin')}
-          className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-2.5 text-[11px] font-bold text-white shadow-card active:scale-95 transition"
-        >
-          <ShieldCheck className="h-3.5 w-3.5 text-brand-400" />
-          <span>Admin</span>
-        </button>
       </header>
 
       {/* Main Profile Info Card */}

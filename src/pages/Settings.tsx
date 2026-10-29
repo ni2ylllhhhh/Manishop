@@ -7,8 +7,7 @@ import {
   Save,
   MessageSquare,
   LogOut,
-  LoaderCircle,
-  ShieldCheck
+  LoaderCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -134,13 +133,6 @@ export function Settings() {
         <ReadOnlyField label="Telegram ID" value={user.telegramId} />
         <ReadOnlyField label="Username" value={user.username ? `@${user.username}` : "Not set"} />
         <ReadOnlyField label="Binance ID" value={user.binanceId || "Not set"} />
-
-        <button
-          onClick={() => navigate('/admin')}
-          className="flex h-11 w-full items-center gap-2.5 rounded-2xl bg-slate-900 px-3 text-[12px] font-semibold text-white shadow-card transition active:scale-98"
-        >
-          <ShieldCheck className="h-4 w-4 text-brand-400" /> 🔐 Admin Panel (অ্যাডমিন প্যানেল)
-        </button>
 
         <button
           onClick={() => openTelegramChat(config.supportUrl)}
