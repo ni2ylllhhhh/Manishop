@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthGate } from './components/AuthGate';
@@ -13,12 +14,43 @@ import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
 
+function AdminAutoRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    try {
+      const hash = window.location.hash || '';
+      const searchParams = new URLSearchParams(location.search);
+      const tgStart = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param;
+
+      if (
+        hash === '#/admin' ||
+        hash === '#admin' ||
+        hash.startsWith('#/admin') ||
+        searchParams.get('page') === 'admin' ||
+        searchParams.has('admin') ||
+        tgStart === 'admin'
+      ) {
+        if (location.pathname !== '/admin') {
+          navigate('/admin', { replace: true });
+        }
+      }
+    } catch {}
+  }, [location, navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <AdminAutoRedirect />
       <Toaster position="top-center" richColors closeButton toastOptions={{ duration: 4000 }} />
       <Routes>
         <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/*" element={<Admin />} />
+        <Route path="admin" element={<Admin />} />
         <Route path="/*" element={<AppShell />} />
       </Routes>
     </BrowserRouter>

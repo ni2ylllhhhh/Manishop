@@ -6,7 +6,8 @@ import {
   User as UserIcon,
   Send,
   Link as LinkIcon,
-  Trophy
+  Trophy,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
@@ -42,15 +43,25 @@ export function Profile() {
   return (
     <main className="px-3 pt-3 pb-8">
       {/* Top Header */}
-      <header className="mb-3 flex items-center gap-2">
+      <header className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/profile/settings")}
+            aria-label="Settings"
+            className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-card active:scale-95 transition"
+          >
+            <SettingsIcon className="h-4 w-4 text-brand-500" />
+          </button>
+          <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink cursor-pointer">Profile</h1>
+        </div>
+
         <button
-          onClick={() => navigate("/profile/settings")}
-          aria-label="Settings"
-          className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-card active:scale-95 transition"
+          onClick={() => navigate('/admin')}
+          className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-2.5 text-[11px] font-bold text-white shadow-card active:scale-95 transition"
         >
-          <SettingsIcon className="h-4 w-4 text-brand-500" />
+          <ShieldCheck className="h-3.5 w-3.5 text-brand-400" />
+          <span>Admin</span>
         </button>
-        <h1 onClick={handleSecretTap} className="text-[15px] font-extrabold text-ink cursor-pointer">Profile</h1>
       </header>
 
       {/* Main Profile Info Card */}

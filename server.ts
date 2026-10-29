@@ -253,6 +253,22 @@ async function handleTelegramMessage(message: any) {
 
   console.log(`[Telegram Bot] Received message from ${firstName} (${chatId}): "${text}"`);
 
+  // Handle /admin command in Telegram bot
+  if (text === "/admin" || text.startsWith("/admin")) {
+    const adminUrl = "https://manishop.ziniyaapu7.workers.dev/admin";
+    await sendTelegramMessage(
+      chatId,
+      `🛡️ <b>ManeiShop Admin Panel</b>\n\nএডমিন প্যানেলে প্রবেশ করতে নিচের বাটনে চাপুন:\n\n🔑 <b>Default PIN:</b> <code>445566</code> (অথবা <code>1234</code>)`,
+      {
+        inline_keyboard: [
+          [{ text: "🔐 Open Admin Panel (Mini App)", web_app: { url: adminUrl } }],
+          [{ text: "🌐 Open in Web Browser", url: adminUrl }]
+        ]
+      }
+    );
+    return;
+  }
+
   // Check if it is /start command or any text
   const isStart = text.startsWith("/start");
   let referrerId: string | null = null;
