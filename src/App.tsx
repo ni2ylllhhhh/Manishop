@@ -21,20 +21,29 @@ function AdminAutoRedirect() {
   useEffect(() => {
     try {
       const hash = window.location.hash || '';
-      const searchParams = new URLSearchParams(location.search);
+      const search = window.location.search || location.search || '';
+      const searchParams = new URLSearchParams(search);
       const tgStart = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param;
+      const winPath = (window.location.pathname || '').toLowerCase();
+      const locPath = (location.pathname || '').toLowerCase();
 
-      if (
+      const shouldBeAdmin =
+        winPath === '/admin' ||
+        winPath === '/admin/' ||
+        winPath === '/admin.html' ||
+        winPath.startsWith('/admin') ||
+        locPath === '/admin/' ||
+        locPath === '/admin.html' ||
         hash === '#/admin' ||
         hash === '#admin' ||
         hash.startsWith('#/admin') ||
+        hash.startsWith('#admin') ||
         searchParams.get('page') === 'admin' ||
         searchParams.has('admin') ||
-        tgStart === 'admin'
-      ) {
-        if (location.pathname !== '/admin') {
-          navigate('/admin', { replace: true });
-        }
+        tgStart === 'admin';
+
+      if (shouldBeAdmin && location.pathname !== '/admin') {
+        navigate('/admin', { replace: true });
       }
     } catch {}
   }, [location, navigate]);
@@ -50,7 +59,10 @@ export default function App() {
       <Routes>
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/*" element={<Admin />} />
+        <Route path="/admin/" element={<Admin />} />
+        <Route path="/admin.html" element={<Admin />} />
         <Route path="admin" element={<Admin />} />
+        <Route path="admin/*" element={<Admin />} />
         <Route path="/*" element={<AppShell />} />
       </Routes>
     </BrowserRouter>

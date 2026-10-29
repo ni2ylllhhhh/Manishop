@@ -307,6 +307,23 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // 0. Admin direct route: Always serve SPA HTML with 200 OK (never 307 redirect)
+    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+      if (env.ASSETS) {
+        const rootReq = new Request(new URL("/", request.url), request);
+        const rootRes = await env.ASSETS.fetch(rootReq);
+        if (rootRes.status === 200) {
+          return new Response(rootRes.body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
+          });
+        }
+      }
+    }
+
     // 1. Telegram Webhook Endpoint
     if (url.pathname === "/webhook" || url.pathname === "/api/telegram-webhook") {
       if (request.method === "POST") {
@@ -573,19 +590,34 @@ export default {
       const pathname = url.pathname;
       const isFile = pathname.includes(".") && !pathname.endsWith(".html");
 
-      // For SPA routes like /admin, /refer, /rank, /wallet, /profile - serve index.html directly
+      // For SPA routes like /admin, /refer, /rank, /wallet, /profile - fetch "/" (NOT "/index.html" which causes 307 redirect)
       if (!isFile && request.method === "GET") {
-        const indexRequest = new Request(new URL("/index.html", request.url), request);
-        const indexRes = await env.ASSETS.fetch(indexRequest);
-        if (indexRes.status < 400) {
-          return indexRes;
+        const rootRequest = new Request(new URL("/", request.url), request);
+        const rootRes = await env.ASSETS.fetch(rootRequest);
+        if (rootRes.status === 200) {
+          return new Response(rootRes.body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "public, max-age=0, must-revalidate"
+            }
+          });
         }
       }
 
       const assetRes = await env.ASSETS.fetch(request);
-      if (assetRes.status === 404 && request.method === "GET") {
-        const indexRequest = new Request(new URL("/index.html", request.url), request);
-        return env.ASSETS.fetch(indexRequest);
+      if ((assetRes.status === 404 || (assetRes.status >= 300 && assetRes.status < 400)) && !isFile && request.method === "GET") {
+        const rootRequest = new Request(new URL("/", request.url), request);
+        const rootRes = await env.ASSETS.fetch(rootRequest);
+        if (rootRes.status === 200) {
+          return new Response(rootRes.body, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "public, max-age=0, must-revalidate"
+            }
+          });
+        }
       }
       return assetRes;
     }
