@@ -356,25 +356,49 @@ export default {
     if (url.pathname === "/api/notify-referral" && request.method === "POST") {
       try {
         const body = await request.json();
-        const { newUserId, newUserName, referrerId, isExisting, balance, todayEarned, referralCount } = body || {};
+        const { newUserId, newUserName, referrerId, isExisting } = body || {};
+
+        // Existing users must NEVER trigger referrer notification or welcome message
+        if (isExisting) {
+          return new Response(JSON.stringify({ ok: true, status: "existing_user_ignored" }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
         const cleanUid = String(newUserId || "").trim().replace(/^@/, '');
         const cleanName = String(newUserName || "ইউজার").trim();
         const cleanRef = String(referrerId || "").trim().replace(/^@/, '');
 
+        // Double check in Firebase RTDB that this user isn't already registered
         if (cleanUid && /^\d+$/.test(cleanUid) && cleanUid !== "724910385") {
-          if (!isExisting) {
-            const welcomeText = `🎉 <b>স্বাগতম ${cleanName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
-            await sendTelegramMessage(cleanUid, welcomeText, {
+          let alreadyRegistered = false;
+          try {
+            const uRes = await fetch(`${RTDB_URL}/users/${cleanUid}.json`);
+            if (uRes.ok) {
+              const uData = await uRes.json();
+              if (uData && (uData.welcomeSent || (uData.createdAt && Date.now() - new Date(uData.createdAt).getTime() > 120000))) {
+                alreadyRegistered = true;
+              }
+            }
+          } catch {}
+
+          if (alreadyRegistered) {
+            return new Response(JSON.stringify({ ok: true, status: "already_registered" }), {
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+
+          const welcomeText = `🎉 <b>স্বাগতম ${cleanName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+          await sendTelegramMessage(cleanUid, welcomeText, {
+            inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
+          });
+
+          if (cleanRef && cleanRef !== cleanUid && /^\d+$/.test(cleanRef) && cleanRef !== "724910385") {
+            const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${cleanName}\n💰 <b>রেফারেল বোনাস:</b> +$0.50 USDT\n\n🚀 এখনই ManeiShop অ্যাপে চেক করুন!`;
+            await sendTelegramMessage(cleanRef, referrerText, {
               inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
             });
           }
-        }
-
-        if (cleanRef && cleanRef !== cleanUid && /^\d+$/.test(cleanRef) && cleanRef !== "724910385") {
-          const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${cleanName}\n💰 <b>রেফারেল বোনাস:</b> +$0.50 USDT\n\n🚀 এখনই ManeiShop অ্যাপে চেক করুন!`;
-          await sendTelegramMessage(cleanRef, referrerText, {
-            inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: MINI_APP_URL } }]]
-          });
         }
 
         return new Response(JSON.stringify({ ok: true }), {

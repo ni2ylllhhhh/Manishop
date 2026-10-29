@@ -370,8 +370,39 @@ export async function loginOrRegisterUser(
       existing = { ...localUser };
       db.users[tid] = existing;
     } else {
-      existing = null;
-      isBrandNewUser = true;
+      // Check if user was already registered locally on this device in the past
+      const wasRegistered = typeof window !== 'undefined' && localStorage.getItem(`maneishop_user_registered_${tid}`) === '1';
+      if (wasRegistered) {
+        existing = {
+          telegramId: tid,
+          username: telegramUser.username || "",
+          firstName: telegramUser.first_name || "User",
+          lastName: telegramUser.last_name || "",
+          photoUrl: telegramUser.photo_url || "",
+          bio: "",
+          balance: 0.01,
+          lifetimeEarned: 0.01,
+          todayEarned: 0.01,
+          todayDate: getTodayDateString(),
+          adsWatchedToday: 0,
+          referralCount: 0,
+          level2Count: 0,
+          referralEarned: 0,
+          referredBy: null,
+          binanceId: "",
+          following: [],
+          verified: false,
+          banned: false,
+          welcomeSent: true,
+          createdAt: now,
+          lastLogin: now
+        };
+        db.users[tid] = existing;
+        isBrandNewUser = false;
+      } else {
+        existing = null;
+        isBrandNewUser = true;
+      }
     }
 
     if (cleanReferrer && remoteParent) {
@@ -403,74 +434,6 @@ export async function loginOrRegisterUser(
         existing.todayDate = getTodayDateString();
         existing.todayEarned = 0;
         existing.adsWatchedToday = 0;
-      }
-
-      // If user wasn't referred before and now came with referral link
-      if (!existing.referredBy && cleanReferrer && cleanReferrer !== tid) {
-        existing.referredBy = cleanReferrer;
-        if (!db.users[cleanReferrer]) {
-          db.users[cleanReferrer] = {
-            telegramId: cleanReferrer,
-            username: `user_${cleanReferrer}`,
-            firstName: `User ${cleanReferrer}`,
-            lastName: "",
-            photoUrl: "",
-            bio: "",
-            balance: 0,
-            lifetimeEarned: 0,
-            todayEarned: 0,
-            todayDate: getTodayDateString(),
-            adsWatchedToday: 0,
-            referralCount: 0,
-            level2Count: 0,
-            referralEarned: 0,
-            referredBy: null,
-            binanceId: "",
-            following: [],
-            verified: false,
-            banned: false,
-            createdAt: now,
-            lastLogin: now
-          };
-        }
-        const parentUser = db.users[cleanReferrer];
-        parentUser.referralCount += 1;
-        parentUser.balance = Number((parentUser.balance + db.config.referralBonus).toFixed(2));
-        parentUser.lifetimeEarned = Number((parentUser.lifetimeEarned + db.config.referralBonus).toFixed(2));
-        parentUser.referralEarned = Number((parentUser.referralEarned + db.config.referralBonus).toFixed(2));
-
-        const newRef: Referral = {
-          id: generateId("ref"),
-          referrerTelegramId: parentUser.telegramId,
-          referredTelegramId: tid,
-          level: 1,
-          bonus: db.config.referralBonus,
-          createdAt: now
-        };
-        db.referrals.unshift(newRef);
-        refToSync = { ...newRef };
-        parentToSync = { ...parentUser };
-
-        db.logs.unshift({
-          id: generateId("log"),
-          telegramId: parentUser.telegramId,
-          kind: "referral",
-          label: `Level 1 referral bonus (${displayName})`,
-          amount: db.config.referralBonus,
-          createdAt: now
-        });
-
-        const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
-        const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
-        messagesToSend.push({
-          chatId: parentUser.telegramId,
-          text: referrerText,
-          replyMarkup: {
-            inline_keyboard: [
-              [{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]
-            ]
-          }
-        });
       }
 
       // Check if existing user never received welcome message or bonus
@@ -565,8 +528,14 @@ export async function loginOrRegisterUser(
       });
     }
 
-    // Credit referrer (Level 1)
-    if (cleanReferrer) {
+    // Mark user as registered locally on this device
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(`maneishop_user_registered_${tid}`, '1'); } catch {}
+    }
+
+    // Credit referrer (Level 1) - STRICTLY for brand new user registration ONLY ONCE
+    const alreadyReferred = db.referrals.some(r => r.referredTelegramId === tid);
+    if (cleanReferrer && cleanReferrer !== tid && !alreadyReferred) {
       if (!db.users[cleanReferrer]) {
         db.users[cleanReferrer] = {
           telegramId: cleanReferrer,
@@ -620,7 +589,7 @@ export async function loginOrRegisterUser(
         createdAt: now
       });
 
-      // Prepare referrer notification
+      // Prepare referrer notification (sent exactly once)
       const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
       const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
       messagesToSend.push({
@@ -665,7 +634,7 @@ export async function loginOrRegisterUser(
       }
     }
 
-    // Welcome message to the new user in bot
+    // Welcome message to the new user in bot (sent exactly once)
     const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
     const welcomeMsg = `🎉 <b>স্বাগতম ${escapeHtml(telegramUser.first_name || 'ইউজার')}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$${wb.toFixed(2)} USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $${newUser.balance.toFixed(2)} USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$${db.config.referralBonus.toFixed(2)} USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $${db.config.minWithdraw} USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
     messagesToSend.push({
@@ -682,7 +651,7 @@ export async function loginOrRegisterUser(
     user = newUser;
   });
 
-  // 1. Dispatch all pending bot messages immediately (skip demo mock accounts)
+  // 1. Dispatch all pending bot messages exactly once (skip demo mock accounts)
   const isDemo = tid === "724910385" || telegramUser.username === "demo_user";
   if (!isDemo) {
     await Promise.allSettled(
@@ -694,23 +663,6 @@ export async function loginOrRegisterUser(
         return Promise.resolve(false);
       })
     );
-
-    // 2. Trigger server-side notification engine for Telegram bot delivery (only when a referral exists)
-    if (cleanReferrer) {
-      fetch("/api/notify-referral", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          newUserId: tid,
-          newUserName: displayName,
-          referrerId: cleanReferrer,
-          isExisting: Boolean(remoteUser && remoteUser.welcomeSent),
-          balance: appStore.get().users[tid]?.balance ?? 0,
-          todayEarned: appStore.get().users[tid]?.todayEarned ?? 0,
-          referralCount: appStore.get().users[tid]?.referralCount ?? 0
-        })
-      }).catch((e) => console.warn("[Notify Referral API Error]:", e));
-    }
   }
 
   // 3. Sync to Firebase in parallel

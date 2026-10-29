@@ -867,24 +867,36 @@ app.post("/api/send-message", async (req, res) => {
 // Dedicated Real-Time Referral & Welcome Notification Engine
 app.post("/api/notify-referral", async (req, res) => {
   try {
-    const { newUserId, newUserName, referrerId } = req.body || {};
+    const { newUserId, newUserName, referrerId, isExisting } = req.body || {};
+
+    // Existing users must NEVER trigger referrer notification or welcome message
+    if (isExisting) {
+      return res.json({ ok: true, status: "existing_user_ignored" });
+    }
+
     const cleanNewUserId = String(newUserId || "").trim().replace(/^@/, '');
     const cleanUserName = String(newUserName || "ইউজার").trim();
     const cleanRefId = String(referrerId || "").trim().replace(/^@/, '');
 
-    console.log(`[Referral Event] New User: ${cleanUserName} (${cleanNewUserId}), Referrer: ${cleanRefId}`);
+    // Double check that this user isn't already registered in Firebase
+    if (cleanNewUserId && cleanNewUserId !== "724910385") {
+      const existingInDb = await fetchFirebase<any>(`users/${cleanNewUserId}`);
+      if (existingInDb && (existingInDb.welcomeSent || (existingInDb.createdAt && Date.now() - new Date(existingInDb.createdAt).getTime() > 120000))) {
+        return res.json({ ok: true, status: "already_registered" });
+      }
+    }
+
+    console.log(`[Referral Event] Genuinely New User: ${cleanUserName} (${cleanNewUserId}), Referrer: ${cleanRefId}`);
 
     const now = new Date().toISOString();
     const miniUrl = MINI_APP_URL || "https://manishop.ziniyaapu7.workers.dev/";
 
-    // 1. Send welcome message to brand new users (existing users are handled by client dispatcher with debounce)
+    // 1. Send welcome message to brand new user
     if (cleanNewUserId && /^\d+$/.test(cleanNewUserId) && cleanNewUserId !== "724910385") {
-      if (!req.body?.isExisting) {
-        const welcomeText = `🎉 <b>স্বাগতম ${cleanUserName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
-        await sendTelegramMessage(cleanNewUserId, welcomeText, {
-          inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
-        });
-      }
+      const welcomeText = `🎉 <b>স্বাগতম ${cleanUserName}!</b>\n\n🎁 <b>নতুন জয়েনিং বোনাস:</b> +$0.01 USDT আপনার একাউন্টে যোগ হয়েছে!\n💵 <b>বর্তমান ব্যালেন্স:</b> $0.01 USDT\n\n👉 প্রতিদিন ভিডিও অ্যাড দেখুন ও স্পেশাল টাস্ক পূরণ করে সরাসরি বিকাশ, নগদ বা বাইন্যান্সে টাকা তুলুন।\n👥 <b>প্রতি সফল রেফারে পাবেন:</b> +$0.50 USDT!\n💰 <b>নূন্যতম উইথড্র:</b> $5.00 USDT\n\n🚀 এখনই কাজ শুরু করতে নিচের বাটনে চাপুন!`;
+      await sendTelegramMessage(cleanNewUserId, welcomeText, {
+        inline_keyboard: [[{ text: "🚀 Open ManeiShop App", web_app: { url: miniUrl } }]]
+      });
     }
 
     // 2. If valid referrer exists, credit them and send Telegram message
