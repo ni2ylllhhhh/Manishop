@@ -121,6 +121,25 @@ export function VideoWatch() {
     };
   }, []);
 
+  // Strictly block and disable Fullscreen requests
+  useEffect(() => {
+    const exitFs = () => {
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', exitFs);
+    document.addEventListener('webkitfullscreenchange', exitFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', exitFs);
+      document.removeEventListener('webkitfullscreenchange', exitFs);
+    };
+  }, []);
+
   // Sync already claimed status and check if video is already completed
   useEffect(() => {
     if (!liveUser || !currentVideo) return;
@@ -412,29 +431,28 @@ export function VideoWatch() {
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 border border-emerald-200/80 shadow-2xs">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            <span>সিকিউরিটি সক্রিয় • ভিডিও লিংক ক্লিক নিষ্ক্রিয়</span>
+            <span>সিকিউরিটি সক্রিয় • ফুল স্ক্রিন ও বহিঃলিংক সম্পূর্ণ নিষ্ক্রিয়</span>
           </div>
-          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Secure Player</span>
+          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Secure HD Player</span>
         </div>
 
-        {/* Video Player Box with Security Shields */}
+        {/* Video Player Box with Security Shields (Bigger display & Fullscreen strictly disabled) */}
         <div
           ref={videoSectionRef}
-          className="relative overflow-hidden rounded-2xl bg-black shadow-card scroll-mt-14"
+          className="relative -mx-1 sm:mx-0 overflow-hidden rounded-2xl bg-black shadow-card scroll-mt-14 ring-1 ring-black/10"
         >
-          <div className="relative aspect-video w-full bg-slate-900 overflow-hidden">
+          <div className="relative w-full aspect-[16/10] min-h-[250px] max-h-[380px] bg-slate-900 overflow-hidden">
             {ytId ? (
               <>
                 <iframe
                   src={embedUrl}
                   title={currentVideo.title}
                   className="h-full w-full border-0 select-none"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   sandbox="allow-scripts allow-same-origin allow-presentation"
-                  allowFullScreen
                 />
 
-                {/* 🛡️ Strict Click Shields: Absorb and cancel clicks on YouTube title, avatar, watermark, & share buttons */}
+                {/* 🛡️ Strict Click Shields: Absorb and cancel clicks on YouTube title, avatar, watermark, fullscreen, & share buttons */}
                 {/* 1. Top Bar Shield: channel name, avatar, title, copy link, and share buttons */}
                 <div
                   className="absolute top-0 left-0 right-0 h-16 z-20 cursor-default select-none bg-transparent"
@@ -448,9 +466,9 @@ export function VideoWatch() {
                   title="ভিডিও লিংক সুরক্ষিত"
                 />
 
-                {/* 2. Bottom Right Shield: YouTube logo watermark */}
+                {/* 2. Bottom Right Shield: Covers YouTube logo AND Fullscreen button completely */}
                 <div
-                  className="absolute bottom-0 right-0 w-36 h-12 z-20 cursor-default select-none bg-transparent"
+                  className="absolute bottom-0 right-0 w-44 h-14 z-20 cursor-default select-none bg-transparent"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -458,12 +476,12 @@ export function VideoWatch() {
                   onTouchStart={(e) => {
                     e.stopPropagation();
                   }}
-                  title="ভিডিও লিংক সুরক্ষিত"
+                  title="ফুল স্ক্রিন ও লিংক নিষ্ক্রিয়"
                 />
 
                 {/* 3. Bottom Left Shield: link icon / watch on YouTube / share links */}
                 <div
-                  className="absolute bottom-0 left-0 w-24 h-12 z-20 cursor-default select-none bg-transparent"
+                  className="absolute bottom-0 left-0 w-28 h-14 z-20 cursor-default select-none bg-transparent"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -476,7 +494,7 @@ export function VideoWatch() {
 
                 {/* 4. Bottom Center Shield: suggested thumbnail cards and overlays */}
                 <div
-                  className="absolute bottom-11 left-1/2 -translate-x-1/2 w-48 h-14 z-20 cursor-default select-none bg-transparent"
+                  className="absolute bottom-11 left-1/2 -translate-x-1/2 w-52 h-14 z-20 cursor-default select-none bg-transparent"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
