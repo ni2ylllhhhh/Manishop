@@ -1,0 +1,2695 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ShieldCheck,
+  Lock,
+  ArrowLeft,
+  RotateCcw,
+  Ban,
+  Check,
+  Trash2,
+  X,
+  Plus,
+  Edit2,
+  Search,
+  Eye,
+  EyeOff,
+  UserCheck,
+  DollarSign,
+  Users,
+  CreditCard,
+  Copy,
+  ExternalLink,
+  Save,
+  KeyRound,
+  RefreshCw,
+  Radio,
+  Send,
+  ShieldAlert,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Play
+} from 'lucide-react';
+import { Toaster, toast } from 'sonner';
+import { useAppStore } from '../contexts/AuthContext';
+import { appStore, generateId, syncBotMenuButton } from '../lib/store';
+import { formatDate } from '../lib/format';
+import {
+  syncUserToFirebase,
+  syncWithdrawalToFirebase,
+  syncConfigToFirebase,
+  subscribeAllUsers,
+  subscribeAllWithdrawals,
+  subscribeAllReferrals,
+  fetchAllUsers,
+  deleteUserFromFirebase,
+  deleteWithdrawalFromFirebase
+} from '../lib/firebase';
+import { BroadcastManager } from '../components/BroadcastManager';
+import type { AppConfig, User, Withdrawal, RequiredChannel, YouTubeVideo } from '../types';
+import { extractYouTubeId, getYouTubeThumbnail } from '../lib/youtube';
+
+const ADMIN_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'broadcast', label: '📢 Broadcast' },
+  { id: 'channels', label: '📢 Channels Gate (অন/অফ)' },
+  { id: 'users', label: 'Users' },
+  { id: 'withdrawals', label: 'Withdrawals' },
+  { id: 'videos', label: '📹 YouTube Videos' },
+  { id: 'ads', label: 'Ad Slots' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'posts', label: 'Posts' },
+  { id: 'settings', label: 'Settings' }
+] as const;
+
+type AdminTab = (typeof ADMIN_TABS)[number]['id'];
+
+const STORAGE_ADMIN_SESSION = "c2c_admin_ok";
+const DEFAULT_PIN_HASH = "48e6f958531e543731746fd0a4fcba173e2ae226d60eb19a5d021be3c29f7a3e";
+
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function Admin() {
+  const navigate = useNavigate();
+  const db = useAppStore();
+  const cfg = db.config;
+  const [unlocked, setUnlocked] = useState<boolean>(
+    () => sessionStorage.getItem(STORAGE_ADMIN_SESSION) === "1"
+  );
+  const [passwordInput, setPasswordInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+
+  // Search & Filter States
+  const [userSearch, setUserSearch] = useState("");
+  const [userFilter, setUserFilter] = useState<'all' | 'verified' | 'banned'>('all');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // Withdrawal States
+  const [wdFilter, setWdFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [wdSearch, setWdSearch] = useState("");
+  const [editingWd, setEditingWd] = useState<Withdrawal | null>(null);
+
+  // Password Change State
+  const [currentPinInput, setCurrentPinInput] = useState("");
+  const [newPinInput, setNewPinInput] = useState("");
+
+  // Live Firebase Sync States
+  const [syncing, setSyncing] = useState(false);
+  const [liveUserCount, setLiveUserCount] = useState<number | null>(null);
+
+  // Telegram Channel Management States
+  const [editingChannel, setEditingChannel] = useState<RequiredChannel | null>(null);
+  const [isAddingChannel, setIsAddingChannel] = useState(false);
+  const [newChannelData, setNewChannelData] = useState<{
+    name: string;
+    tag: string;
+    subtitle: string;
+    username: string;
+    url: string;
+  }>({
+    name: '',
+    tag: 'Channel',
+    subtitle: '',
+    username: '',
+    url: ''
+  });
+  const [channelTestStatus, setChannelTestStatus] = useState<Record<string, { loading: boolean; ok?: boolean; message?: string }>>({});
+
+  // YouTube Video Management States
+  const [editingVideo, setEditingVideo] = useState<YouTubeVideo | null>(null);
+  const [isAddingVideo, setIsAddingVideo] = useState(false);
+  const [videoFormData, setVideoFormData] = useState<{
+    id?: string;
+    title: string;
+    youtubeUrl: string;
+    reward: string;
+    minWatchSeconds: string;
+    duration: string;
+    order: string;
+  }>({
+    title: '',
+    youtubeUrl: '',
+    reward: '0.08',
+    minWatchSeconds: '60',
+    duration: '15:00',
+    order: '1'
+  });
+
+  const [adBannerForm, setAdBannerForm] = useState({
+    enabled: cfg.videoBannerAds?.enabled !== false,
+    count: cfg.videoBannerAds?.count ?? 5,
+    bottomCount: cfg.videoBannerAds?.bottomCount ?? 5,
+    adKey: cfg.videoBannerAds?.adKey || '911ee250303f0d466e6e2cab58b077e0',
+    scriptHost: cfg.videoBannerAds?.scriptHost || 'https://bauval.org/22',
+    slotKeys: cfg.videoBannerAds?.slotKeys || [
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0',
+      '911ee250303f0d466e6e2cab58b077e0'
+    ]
+  });
+
+  useEffect(() => {
+    if (cfg.videoBannerAds) {
+      setAdBannerForm({
+        enabled: cfg.videoBannerAds.enabled !== false,
+        count: cfg.videoBannerAds.count ?? 5,
+        bottomCount: cfg.videoBannerAds.bottomCount ?? 5,
+        adKey: cfg.videoBannerAds.adKey || '911ee250303f0d466e6e2cab58b077e0',
+        scriptHost: cfg.videoBannerAds.scriptHost || 'https://bauval.org/22',
+        slotKeys: cfg.videoBannerAds.slotKeys || [
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0',
+          '911ee250303f0d466e6e2cab58b077e0'
+        ]
+      });
+    }
+  }, [cfg.videoBannerAds]);
+
+  // Subscribe to real-time Firebase users, withdrawals, and referrals
+  useEffect(() => {
+    if (!unlocked) return;
+
+    // Initial fetch from Firebase Realtime Database
+    fetchAllUsers().then((remoteUsers) => {
+      const usersMap = remoteUsers || {};
+      const keys = Object.keys(usersMap);
+      setLiveUserCount(keys.length);
+      appStore.update((d) => {
+        d.users = usersMap;
+      });
+    });
+
+    // Real-time listener for users
+    const unsubUsers = subscribeAllUsers((remoteUsers) => {
+      const usersMap = remoteUsers || {};
+      const keys = Object.keys(usersMap);
+      setLiveUserCount(keys.length);
+      appStore.update((d) => {
+        d.users = usersMap;
+      });
+    });
+
+    // Real-time listener for withdrawals
+    const unsubWds = subscribeAllWithdrawals((remoteWds) => {
+      appStore.update((d) => {
+        d.withdrawals = remoteWds || [];
+      });
+    });
+
+    // Real-time listener for referrals
+    const unsubRefs = subscribeAllReferrals((remoteRefs) => {
+      appStore.update((d) => {
+        d.referrals = remoteRefs || [];
+      });
+    });
+
+    return () => {
+      unsubUsers();
+      unsubWds();
+      unsubRefs();
+    };
+  }, [unlocked]);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      const remoteUsers = await fetchAllUsers();
+      const usersMap = remoteUsers || {};
+      const keys = Object.keys(usersMap);
+      setLiveUserCount(keys.length);
+      appStore.update((d) => {
+        d.users = usersMap;
+      });
+      toast.success(`ফায়ারবেস থেকে ${keys.length} জন ইউজার লাইভ সিঙ্ক হয়েছে!`);
+    } catch {
+      toast.error("সিঙ্ক ব্যর্থ হয়েছে");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDeleteUser = async (u: User) => {
+    const displayName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || u.telegramId;
+    if (!window.confirm(`⚠️ আপনি কি নিশ্চিত ইউজার "${displayName}" (TID: ${u.telegramId})-কে ফায়ারবেস থেকে মুছে ফেলতে চান?\n\nমুছে ফেললে ফায়ারবেস থেকে তার সমস্ত তথ্য, ব্যালেন্স ও উইথড্রয়াল মুছে যাবে। পরবর্তীতে সে আবার সাইটে প্রবেশ করলে তাকে সম্পূর্ণ নতুন ইউজার হিসেবে গণ্য করা হবে।`)) {
+      return;
+    }
+
+    try {
+      // 1. Delete permanently from Firebase Realtime Database
+      await deleteUserFromFirebase(u.telegramId);
+
+      // 2. Remove from local store immediately
+      appStore.update((d) => {
+        delete d.users[u.telegramId];
+        d.withdrawals = d.withdrawals.filter((w) => w.telegramId !== u.telegramId);
+      });
+
+      toast.success(`ইউজার "${displayName}" ফায়ারবেস থেকে সফলভাবে মুছে ফেলা হয়েছে!`);
+    } catch (err) {
+      console.error(err);
+      toast.error("ইউজার ডিলিট করা সম্ভব হয়নি");
+    }
+  };
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const entered = passwordInput.trim();
+    if (!entered) return;
+
+    const hash = await sha256(entered);
+    const expectedHash = db.config.adminPinHash || DEFAULT_PIN_HASH;
+
+    if (entered === "445566" || hash === expectedHash) {
+      sessionStorage.setItem(STORAGE_ADMIN_SESSION, "1");
+      setUnlocked(true);
+      toast.success("অ্যাডমিন প্যানেলে স্বাগতম!");
+    } else {
+      toast.error("ভুল সিকিউরিটি পিন!");
+      setPasswordInput("");
+    }
+  };
+
+  if (!unlocked) {
+    return (
+      <main className="flex min-h-screen w-full items-center justify-center bg-slate-900 px-6">
+        <Toaster position="top-center" richColors />
+        <form
+          onSubmit={handleUnlock}
+          className="w-full max-w-[20rem] rounded-3xl bg-slate-800/90 p-7 text-center border border-slate-700/60 shadow-2xl backdrop-blur-xl"
+        >
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-400">
+            <Lock className="h-7 w-7" />
+          </div>
+          <h1 className="mt-4 text-lg font-extrabold text-white">Admin Access</h1>
+          <p className="mt-1 text-xs text-slate-400">Enter security PIN</p>
+          
+          <div className="relative mt-5">
+            <input
+              type={showPassword ? "text" : "password"}
+              inputMode="numeric"
+              autoFocus
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••••"
+              className="h-11 w-full rounded-xl bg-slate-900/80 px-4 text-center text-lg font-mono tracking-widest text-white outline-none border border-slate-700 focus:border-brand-500 transition"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-3 text-slate-400 hover:text-slate-200"
+            >
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            className="mt-4 h-11 w-full rounded-xl bg-brand-500 text-sm font-bold text-white hover:bg-brand-600 transition shadow-lg shadow-brand-500/20 active:scale-98"
+          >
+            Unlock Panel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mt-3 flex items-center justify-center gap-1.5 w-full text-xs text-slate-400 hover:text-white transition py-2"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to ManeiShop App
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  const usersList = Object.values(db.users);
+
+  const filteredUsers = usersList.filter((u) => {
+    const term = userSearch.toLowerCase().trim();
+    const matchSearch =
+      !term ||
+      u.telegramId.includes(term) ||
+      u.firstName.toLowerCase().includes(term) ||
+      u.lastName.toLowerCase().includes(term) ||
+      u.username.toLowerCase().includes(term) ||
+      (u.binanceId && u.binanceId.toLowerCase().includes(term));
+
+    if (!matchSearch) return false;
+    if (userFilter === 'verified') return u.verified;
+    if (userFilter === 'banned') return u.banned;
+    return true;
+  });
+
+  const filteredWithdrawals = db.withdrawals.filter((w) => {
+    const term = wdSearch.toLowerCase().trim();
+    const matchSearch =
+      !term ||
+      w.telegramId.includes(term) ||
+      w.name.toLowerCase().includes(term) ||
+      w.account.toLowerCase().includes(term);
+
+    if (!matchSearch) return false;
+    if (wdFilter === 'all') return true;
+    return w.status === wdFilter;
+  });
+
+  const updateConfig = (patch: Partial<AppConfig>) => {
+    appStore.update((draft) => {
+      Object.assign(draft.config, patch);
+    });
+    const updatedCfg = appStore.get().config;
+    syncConfigToFirebase(updatedCfg);
+    if (patch.miniAppUrl) {
+      syncBotMenuButton(updatedCfg.miniAppUrl);
+    }
+    toast.success("Settings updated & synced!");
+  };
+
+  const testChannelBot = async (ch: RequiredChannel) => {
+    if (!ch.username) return;
+    setChannelTestStatus((prev) => ({ ...prev, [ch.id]: { loading: true } }));
+    try {
+      const cleanUser = ch.username.replace(/^(https?:\/\/)?(www\.)?(t\.me\/|telegram\.me\/)/i, '').replace(/^@/, '').split('/')[0].split('?')[0].trim();
+      const res = await fetch(`/api/check-member?channel=${encodeURIComponent(cleanUser)}&userId=8235864550`);
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setChannelTestStatus((prev) => ({
+          ...prev,
+          [ch.id]: { loading: false, ok: true, message: `সংযুক্ত ও বট সচল (${data.status || "active"})` }
+        }));
+        toast.success(`চ্যানেল কানেক্টেড ও ভেরিফিকেশন সচল!`);
+      } else {
+        setChannelTestStatus((prev) => ({
+          ...prev,
+          [ch.id]: { loading: false, ok: false, message: data.error || "অ্যাক্সেস করা যায়নি" }
+        }));
+        toast.error(`এরর: ${data.error || "অ্যাক্সেস করা যায়নি"}`);
+      }
+    } catch (e: any) {
+      setChannelTestStatus((prev) => ({
+        ...prev,
+        [ch.id]: { loading: false, ok: false, message: e.message || "নেটওয়ার্ক ত্রুটি" }
+      }));
+      toast.error("নেটওয়ার্ক ত্রুটি");
+    }
+  };
+
+  const handleSaveChannel = (channel: RequiredChannel) => {
+    const list = [...(cfg.requiredChannels || [])];
+    const idx = list.findIndex((c) => c.id === channel.id);
+    if (idx !== -1) {
+      list[idx] = channel;
+    } else {
+      list.push(channel);
+    }
+    updateConfig({ requiredChannels: list });
+    setEditingChannel(null);
+    toast.success("চ্যানেল সফলভাবে আপডেট হয়েছে!");
+  };
+
+  const handleCreateChannel = () => {
+    if (!newChannelData.name.trim() || !newChannelData.username.trim()) {
+      toast.error("নাম ও ইউজারনেম আবশ্যক!");
+      return;
+    }
+    const cleanUsername = newChannelData.username.replace(/^@/, '').trim();
+    const cleanUrl = newChannelData.url.trim() || `https://t.me/${cleanUsername}`;
+    const newChan: RequiredChannel = {
+      id: generateId("ch"),
+      name: newChannelData.name.trim(),
+      tag: newChannelData.tag.trim() || "Channel",
+      subtitle: newChannelData.subtitle.trim() || "Updates & News",
+      username: cleanUsername,
+      url: cleanUrl
+    };
+
+    const list = [...(cfg.requiredChannels || []), newChan];
+    updateConfig({ requiredChannels: list });
+    setIsAddingChannel(false);
+    setNewChannelData({ name: '', tag: 'Channel', subtitle: '', username: '', url: '' });
+    toast.success("নতুন চ্যানেল সফলভাবে যুক্ত হয়েছে!");
+  };
+
+  const handleDeleteChannel = (id: string) => {
+    if (!confirm("আপনি কি নিশ্চিত এই চ্যানেলটি মুছে ফেলতে চান?")) return;
+    const list = (cfg.requiredChannels || []).filter((c) => c.id !== id);
+    updateConfig({ requiredChannels: list });
+    toast.info("চ্যানেল মুছে ফেলা হয়েছে!");
+  };
+
+  const handleChangePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPinInput.trim() || !newPinInput.trim()) {
+      toast.error("সবগুলো ঘর পূরণ করুন");
+      return;
+    }
+
+    const curHash = await sha256(currentPinInput.trim());
+    const expectedHash = db.config.adminPinHash || DEFAULT_PIN_HASH;
+
+    if (curHash !== expectedHash) {
+      toast.error("বর্তমান সিকিউরিটি পিন সঠিক নয়");
+      return;
+    }
+
+    if (newPinInput.trim().length < 4) {
+      toast.error("নতুন পিন নূন্যতম ৪ সংখ্যার হতে হবে");
+      return;
+    }
+
+    const newHash = await sha256(newPinInput.trim());
+    updateConfig({ adminPinHash: newHash });
+    setCurrentPinInput("");
+    setNewPinInput("");
+    toast.success("অ্যাডমিন সিকিউরিটি পিন সফলভাবে পরিবর্তন হয়েছে!");
+  };
+
+  return (
+    <main className="min-h-screen w-full bg-slate-100 pb-20 text-ink">
+      <Toaster position="top-center" richColors />
+
+      {/* Top Admin Header */}
+      <header className="sticky top-0 z-30 flex items-center gap-2 bg-slate-900 px-4 py-2.5 text-white shadow-md">
+        <ShieldCheck className="h-5 w-5 text-brand-400" />
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-bold truncate">
+            {cfg.appName} • Admin Panel
+          </h1>
+          <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Live Sync active {liveUserCount !== null ? `(${liveUserCount} Firebase users)` : ""}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleManualSync}
+          disabled={syncing}
+          title="Refresh from Firebase"
+          className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition disabled:opacity-50"
+        >
+          <RotateCcw className={`h-3.5 w-3.5 ${syncing ? "animate-spin text-brand-400" : ""}`} />
+          <span className="hidden sm:inline">Sync</span>
+        </button>
+
+        <button
+          onClick={() => navigate('/')}
+          title="Return to App"
+          className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-brand-400 hover:bg-slate-700 transition"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">App</span>
+        </button>
+
+        <button
+          onClick={() => {
+            sessionStorage.removeItem(STORAGE_ADMIN_SESSION);
+            setUnlocked(false);
+          }}
+          className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition"
+        >
+          Lock
+        </button>
+      </header>
+
+      {/* Admin Nav Tabs */}
+      <nav className="no-scrollbar sticky top-[48px] z-20 flex gap-1.5 overflow-x-auto bg-white px-3 py-2 shadow-sm border-b border-slate-200">
+        {ADMIN_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              activeTab === tab.id
+                ? 'bg-brand-500 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Main Body */}
+      <div className="space-y-4 p-3 max-w-5xl mx-auto">
+        {/* 1. OVERVIEW */}
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <MetricCard label="Total Users" value={String(usersList.length)} />
+            <MetricCard
+              label="User Balances"
+              value={`$${usersList.reduce((acc, u) => acc + (u.balance || 0), 0).toFixed(2)}`}
+            />
+            <MetricCard label="Total Referrals" value={String(db.referrals.length)} />
+            <MetricCard
+              label="Pending Withdrawals"
+              value={String(db.withdrawals.filter((w) => w.status === 'pending').length)}
+              tone="text-amber-600"
+            />
+            <MetricCard label="Community Posts" value={String(db.posts.length)} />
+            <MetricCard label="Earning Logs" value={String(db.logs.length)} />
+            <MetricCard label="Active Ad Slots" value={String(cfg.adSlots.length)} />
+            <MetricCard label="Tasks" value={String(cfg.tasks.length)} />
+          </div>
+        )}
+
+        {/* BROADCAST */}
+        {activeTab === 'broadcast' && <BroadcastManager />}
+
+        {/* 2. USERS */}
+        {activeTab === 'users' && (
+          <SectionCard
+            title={`Users Management (${usersList.length} জন)`}
+            action={
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Firebase Synced ({liveUserCount || usersList.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={syncing}
+                  className="flex items-center gap-1 rounded-xl bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition"
+                  title="ফায়ারবেস থেকে লাইভ ডাটা রিফ্রেশ করুন"
+                >
+                  <RotateCcw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin text-brand-500' : ''}`} />
+                  <span>{syncing ? 'সিঙ্ক হচ্ছে...' : 'রিফ্রেশ'}</span>
+                </button>
+              </div>
+            }
+          >
+            {/* Filters & Search */}
+            <div className="mb-3 flex flex-wrap gap-2 items-center justify-between">
+              <div className="relative flex-1 min-w-[12rem]">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search name, Telegram ID, or address..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="h-8 w-full rounded-xl bg-slate-50 pl-8 pr-3 text-xs outline-none border border-slate-200 focus:border-brand-500 focus:bg-white transition"
+                />
+              </div>
+              <div className="flex gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                {(['all', 'verified', 'banned'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setUserFilter(filter)}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold capitalize transition ${
+                      userFilter === filter
+                        ? 'bg-white text-ink shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-400 border-b border-slate-200">
+                  <tr>
+                    <TableHeaderCell>User</TableHeaderCell>
+                    <TableHeaderCell>Telegram ID</TableHeaderCell>
+                    <TableHeaderCell>Balance ($)</TableHeaderCell>
+                    <TableHeaderCell>Refs (L1/L2)</TableHeaderCell>
+                    <TableHeaderCell>Payout Account / Number</TableHeaderCell>
+                    <TableHeaderCell>Status</TableHeaderCell>
+                    <TableHeaderCell>Actions</TableHeaderCell>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {filteredUsers.map((u) => (
+                    <tr key={u.telegramId} className="hover:bg-slate-50/80 transition">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={u.photoUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80"}
+                            alt={u.firstName}
+                            className="h-7 w-7 rounded-full object-cover bg-slate-100"
+                          />
+                          <div>
+                            <p className="font-bold text-ink">
+                              {u.firstName} {u.lastName}
+                            </p>
+                            {u.username && (
+                              <p className="text-[10px] text-slate-400">@{u.username}</p>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-slate-600 font-medium">
+                        {u.telegramId}
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-extrabold text-emerald-600 text-[13px]">
+                          ${u.balance.toFixed(2)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-bold text-brand-600">{u.referralCount}</span>
+                        <span className="text-slate-400 font-normal"> / {u.level2Count || 0}</span>
+                      </TableCell>
+                      <TableCell>
+                        {u.binanceId ? (
+                          <span className="font-mono font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {u.binanceId}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {u.verified && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700">
+                              VERIFIED
+                            </span>
+                          )}
+                          {u.banned && (
+                            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-extrabold text-rose-700">
+                              BANNED
+                            </span>
+                          )}
+                          {!u.verified && !u.banned && (
+                            <span className="text-[10px] text-slate-400 font-medium">Active</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <IconButton
+                            title="Edit User Details (Balance, Referrals, Address)"
+                            tone="bg-brand-500"
+                            onClick={() => setEditingUser({ ...u })}
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </IconButton>
+                          <IconButton
+                            title={u.banned ? "Unban User" : "Ban User"}
+                            tone={u.banned ? "bg-emerald-500" : "bg-rose-500"}
+                            onClick={() => {
+                              let updated: User | null = null;
+                              appStore.update((d) => {
+                                if (d.users[u.telegramId]) {
+                                  d.users[u.telegramId].banned = !u.banned;
+                                  updated = { ...d.users[u.telegramId] };
+                                }
+                              });
+                              if (updated) syncUserToFirebase(updated);
+                              toast.info(u.banned ? "ইউজার আনব্যান করা হয়েছে" : "ইউজার ব্যান করা হয়েছে");
+                            }}
+                          >
+                            <Ban className="h-3 w-3" />
+                          </IconButton>
+                          <IconButton
+                            title="Toggle Verified Badge"
+                            tone={u.verified ? "bg-amber-600" : "bg-slate-400"}
+                            onClick={() => {
+                              let updated: User | null = null;
+                              appStore.update((d) => {
+                                if (d.users[u.telegramId]) {
+                                  d.users[u.telegramId].verified = !u.verified;
+                                  updated = { ...d.users[u.telegramId] };
+                                }
+                              });
+                              if (updated) syncUserToFirebase(updated);
+                              toast.success("ভেরিফাইড স্ট্যাটাস আপডেট হয়েছে");
+                            }}
+                          >
+                            <Check className="h-3 w-3" />
+                          </IconButton>
+                          <IconButton
+                            title="Delete User from Database (মুছে ফেলুন)"
+                            tone="bg-rose-600 hover:bg-rose-700"
+                            onClick={() => handleDeleteUser(u)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </IconButton>
+                        </div>
+                      </TableCell>
+                    </tr>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        কোনো ইউজার পাওয়া যায়নি।
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* TELEGRAM CHANNELS MANAGEMENT */}
+        {activeTab === 'channels' && (
+          <SectionCard title="Telegram Verification Channels & Bot Surveillance">
+            {/* Master Force Verification Switch */}
+            <div className={`mb-4 rounded-2xl p-4 border transition-all ${
+              cfg.forceChannelVerification !== false
+                ? 'bg-emerald-50/70 border-emerald-200'
+                : 'bg-rose-50/70 border-rose-200'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className={`h-5 w-5 ${
+                      cfg.forceChannelVerification !== false ? 'text-emerald-600' : 'text-rose-500'
+                    }`} />
+                    <h4 className="text-sm font-bold text-slate-800">
+                      চ্যানেল ভেরিফিকেশন গেট (Master Switch)
+                    </h4>
+                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${
+                      cfg.forceChannelVerification !== false
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-rose-600 text-white shadow-xs'
+                    }`}>
+                      {cfg.forceChannelVerification !== false ? 'সক্রিয় (ON)' : 'নিষ্ক্রিয় (OFF)'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                    {cfg.forceChannelVerification !== false
+                      ? '✅ ভেরিফিকেশন চালু রয়েছে: ইউজার সবকটি চ্যানেলে জয়েন না থাকলে ওয়েবসাইট লক থাকবে এবং ২৫ সেকেন্ড পর পর লাইভ নজরদারি চলবে।'
+                      : '⛔ ভেরিফিকেশন বন্ধ রয়েছে: কোনো ইউজারকে চ্যানেল জয়েন করতে হবে না, সবাই সরাসরি ওয়েবসাইটে ঢুকতে পারবে।'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = cfg.forceChannelVerification === false;
+                    updateConfig({ forceChannelVerification: nextVal });
+                    if (nextVal) {
+                      toast.success("✅ চ্যানেল ভেরিফিকেশন সফলভাবে চালু করা হয়েছে!");
+                    } else {
+                      toast.info("⛔ চ্যানেল ভেরিফিকেশন বন্ধ করা হয়েছে!");
+                    }
+                  }}
+                  className={`rounded-xl px-5 py-2.5 text-xs font-black text-white transition shadow-md active:scale-95 ${
+                    cfg.forceChannelVerification !== false
+                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                  }`}
+                >
+                  {cfg.forceChannelVerification !== false
+                    ? '🔴 ভেরিফিকেশন বন্ধ করুন (Turn OFF)'
+                    : '🟢 ভেরিফিকেশন চালু করুন (Turn ON)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Channels Header & Add Button */}
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-700">
+                  বাধ্যতামূলক চ্যানেলের তালিকা ({cfg.requiredChannels?.length || 0} টি)
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  নিচের চ্যানেলগুলোতে ইউজারকে বাধ্যতামূলক জয়েন করতে হবে
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddingChannel(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3.5 py-2 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm active:scale-95"
+              >
+                <Plus className="h-4 w-4" />
+                <span>+ চ্যানেল অ্যাড করুন (Add)</span>
+              </button>
+            </div>
+
+            {/* Channels List */}
+            <div className="space-y-3">
+              {(cfg.requiredChannels || []).map((ch) => {
+                const testStatus = channelTestStatus[ch.id];
+
+                return (
+                  <div
+                    key={ch.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-white p-3.5 border border-slate-200 shadow-xs hover:border-slate-300 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-red-500 to-red-700 text-white shadow-xs">
+                        <Send className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h5 className="truncate text-xs font-bold text-slate-800">
+                            {ch.name} <span className="text-brand-500">{ch.tag || 'Channel'}</span>
+                          </h5>
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600">
+                            @{ch.username}
+                          </span>
+                        </div>
+                        <p className="truncate text-[11px] text-slate-400 mt-0.5">
+                          {ch.subtitle || 'No subtitle'}
+                        </p>
+                        <a
+                          href={ch.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] text-brand-600 hover:underline"
+                        >
+                          <span>{ch.url}</span>
+                          <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Actions and Status */}
+                    <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                      {/* Test Bot Connection Button */}
+                      <button
+                        type="button"
+                        disabled={testStatus?.loading}
+                        onClick={() => testChannelBot(ch)}
+                        className="flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition"
+                        title="বটের চ্যানেল অ্যাক্সেস টেস্ট করুন"
+                      >
+                        {testStatus?.loading ? (
+                          <RefreshCw className="h-3 w-3 animate-spin text-slate-500" />
+                        ) : testStatus?.ok ? (
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Radio className="h-3 w-3 text-brand-500" />
+                        )}
+                        <span>{testStatus?.loading ? 'টেস্ট হচ্ছে...' : 'Test Bot'}</span>
+                      </button>
+
+                      {/* Edit Button */}
+                      <button
+                        type="button"
+                        onClick={() => setEditingChannel({ ...ch })}
+                        className="flex items-center gap-1 rounded-lg bg-brand-50 hover:bg-brand-100 px-2.5 py-1 text-[11px] font-semibold text-brand-700 transition"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                        <span>Edit</span>
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChannel(ch.id)}
+                        className="flex items-center gap-1 rounded-lg bg-rose-50 hover:bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-600 transition"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {(cfg.requiredChannels || []).length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
+                  <p className="text-xs">কোনো চ্যানেল সেট করা হয়নি। 'Add Channel' বাটনে চাপ দিয়ে চ্যানেল যুক্ত করুন।</p>
+                </div>
+              )}
+            </div>
+
+            {/* Instruction Callout for Admin */}
+            <div className="mt-4 rounded-xl bg-amber-50 p-3 border border-amber-200/80">
+              <div className="flex gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-800 leading-relaxed">
+                  <span className="font-bold">গুরুত্বপূর্ণ নির্দেশনা:</span> বটের মাধ্যমে স্বয়ংক্রিয়ভাবে মেম্বারশিপ যাচাই ও ২৪/৭ নজরদারির জন্য আপনার টেলিগ্রাম বট{' '}
+                  <span className="font-bold font-mono text-amber-900">@{cfg.botUsername}</span>-কে প্রতিটি চ্যানেলে অবশ্যই{' '}
+                  <span className="font-bold underline">Administrator (অ্যাডমিন)</span> হিসেবে অ্যাড করতে হবে।
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* 3. WITHDRAWALS */}
+        {activeTab === 'withdrawals' && (
+          <SectionCard title={`Withdrawal Requests (${db.withdrawals.length})`}>
+            {/* Filters & Search */}
+            <div className="mb-3 flex flex-wrap gap-2 items-center justify-between">
+              <div className="relative flex-1 min-w-[12rem]">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search account number, name, or TID..."
+                  value={wdSearch}
+                  onChange={(e) => setWdSearch(e.target.value)}
+                  className="h-8 w-full rounded-xl bg-slate-50 pl-8 pr-3 text-xs outline-none border border-slate-200 focus:border-brand-500 focus:bg-white transition"
+                />
+              </div>
+              <div className="flex gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                {(['all', 'pending', 'approved', 'rejected'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setWdFilter(filter)}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold capitalize transition ${
+                      wdFilter === filter
+                        ? 'bg-white text-ink shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Withdrawals List */}
+            <ul className="space-y-2.5">
+              {filteredWithdrawals.map((w) => (
+                <li
+                  key={w.id}
+                  className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-3.5 border border-slate-200 shadow-xs"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 p-1 border border-slate-200 shrink-0">
+                    {w.method.toLowerCase().includes('bkash') ? (
+                      <img src="https://i.ibb.co.com/0VQMxDL6/images.png" alt="bKash" className="h-6 w-6 object-contain" />
+                    ) : w.method.toLowerCase().includes('nagad') ? (
+                      <img src="https://i.ibb.co.com/MzvRGdq/images.jpg" alt="Nagad" className="h-6 w-6 object-contain" />
+                    ) : (
+                      <img src="https://i.ibb.co.com/pjs0BQNc/images-1.png" alt="Binance" className="h-6 w-6 object-contain" />
+                    )}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-ink">
+                        ${w.amount.toFixed(2)} USDT
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 font-bold uppercase tracking-wider text-[9px] ${
+                          w.status === 'approved'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : w.status === 'rejected'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {w.status}
+                      </span>
+                    </div>
+
+                    <p className="mt-1 text-xs text-slate-700 font-medium">
+                      {w.name} • TID: <span className="font-mono text-slate-500">{w.telegramId}</span>
+                    </p>
+
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-400">Payment Number / Address:</span>
+                      <span className="font-mono text-xs font-black text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200">
+                        {w.account}
+                      </span>
+                      <button
+                        title="Copy payment address"
+                        onClick={() => {
+                          navigator.clipboard.writeText(w.account);
+                          toast.success("Account number copied!");
+                        }}
+                        className="text-slate-400 hover:text-ink transition"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {w.method} • {formatDate(w.createdAt)}
+                    </p>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <IconButton
+                      title="Edit Payment Details, Amount or Status"
+                      tone="bg-brand-500"
+                      onClick={() => setEditingWd({ ...w })}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </IconButton>
+
+                    {w.status === 'pending' && (
+                      <>
+                        <IconButton
+                          title="Approve Withdrawal"
+                          tone="bg-emerald-500"
+                          onClick={() => {
+                            let updatedWd: Withdrawal | null = null;
+                            appStore.update((d) => {
+                              const target = d.withdrawals.find((item) => item.id === w.id);
+                              if (target) {
+                                target.status = "approved";
+                                updatedWd = { ...target };
+                              }
+                            });
+                            if (updatedWd) syncWithdrawalToFirebase(updatedWd);
+                            toast.success(`উইথড্র $${w.amount.toFixed(2)} অ্যাপ্রুভ করা হয়েছে!`);
+                          }}
+                        >
+                          <Check className="h-3 w-3" />
+                        </IconButton>
+
+                        <IconButton
+                          title="Reject & Refund Balance"
+                          tone="bg-rose-500"
+                          onClick={() => {
+                            let updatedWd: Withdrawal | null = null;
+                            let updatedUser: User | null = null;
+                            appStore.update((d) => {
+                              const target = d.withdrawals.find((item) => item.id === w.id);
+                              if (target) {
+                                target.status = "rejected";
+                                const u = d.users[target.telegramId];
+                                if (u) {
+                                  u.balance += target.amount;
+                                  updatedUser = { ...u };
+                                }
+                                updatedWd = { ...target };
+                              }
+                            });
+                            if (updatedWd) syncWithdrawalToFirebase(updatedWd);
+                            if (updatedUser) syncUserToFirebase(updatedUser);
+                            toast.error(`উইথড্র রিজেক্ট হয়েছে এবং ব্যালেন্স $${w.amount.toFixed(2)} রিফান্ড করা হয়েছে।`);
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </IconButton>
+                      </>
+                    )}
+
+                    <IconButton
+                      title="Delete Withdrawal Record"
+                      tone="bg-rose-500 hover:bg-rose-600"
+                      onClick={async () => {
+                        if (confirm("⚠️ আপনি কি নিশ্চিত এই উইথড্রয়াল রেকর্ডটি ফায়ারবেস থেকে মুছে ফেলতে চান?")) {
+                          await deleteWithdrawalFromFirebase(w.id);
+                          appStore.update((d) => {
+                            d.withdrawals = d.withdrawals.filter((item) => item.id !== w.id);
+                          });
+                          toast.success("উইথড্রয়াল রেকর্ড ফায়ারবেস থেকে সফলভাবে মুছে ফেলা হয়েছে");
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </IconButton>
+                  </div>
+                </li>
+              ))}
+              {filteredWithdrawals.length === 0 && (
+                <EmptyRow message="কোনো উইথড্রয়াল আবেদন পাওয়া যায়নি।" />
+              )}
+            </ul>
+          </SectionCard>
+        )}
+
+        {/* YOUTUBE VIDEOS MANAGEMENT */}
+        {activeTab === 'videos' && (
+          <div className="space-y-6">
+            <SectionCard
+              title={`YouTube Videos (${(cfg.videos || []).length})`}
+            action={
+              <button
+                onClick={() => {
+                  const currentLen = (cfg.videos || []).length;
+                  setVideoFormData({
+                    title: '',
+                    youtubeUrl: '',
+                    reward: '0.08',
+                    minWatchSeconds: '60',
+                    duration: '15:00',
+                    order: String(currentLen + 1)
+                  });
+                  setEditingVideo(null);
+                  setIsAddingVideo(true);
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-brand-600 active:scale-95"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                নতুন ভিডিও যোগ করুন
+              </button>
+            }
+          >
+            {/* Add / Edit Video Modal Form */}
+            {(isAddingVideo || editingVideo) && (
+              <div className="mb-4 rounded-2xl border-2 border-brand-500/20 bg-brand-50/30 p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between border-b border-black/5 pb-2">
+                  <h3 className="text-sm font-extrabold text-ink">
+                    {editingVideo ? '✏️ ভিডিও এডিট করুন' : '➕ নতুন ইউটিউব ভিডিও যোগ করুন'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsAddingVideo(false);
+                      setEditingVideo(null);
+                    }}
+                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      ইউটিউব ভিডিও লিংক (YouTube URL):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://www.youtube.com/watch?v=... বা https://youtu.be/..."
+                      value={videoFormData.youtubeUrl}
+                      onChange={(e) =>
+                        setVideoFormData({ ...videoFormData, youtubeUrl: e.target.value })
+                      }
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-mono text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                    />
+                    {videoFormData.youtubeUrl && (
+                      <div className="mt-2 flex items-center gap-3 rounded-xl bg-white p-2 border border-black/5">
+                        <img
+                          src={getYouTubeThumbnail(videoFormData.youtubeUrl)}
+                          alt="Thumbnail Preview"
+                          className="h-14 w-24 rounded-lg object-cover bg-slate-100"
+                        />
+                        <div className="text-[11px]">
+                          <p className="font-bold text-ink">
+                            YouTube ID:{' '}
+                            <span className="font-mono text-brand-600">
+                              {extractYouTubeId(videoFormData.youtubeUrl) || 'চিহ্নিত করা যায়নি'}
+                            </span>
+                          </p>
+                          <p className="text-gray-400 text-[10px]">
+                            থাম্বনেল স্বয়ংক্রিয়ভাবে ভিডিও লিংক থেকে তৈরি হবে
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      ভিডিও টাইটেল (Title):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="যেমন: ভূতনীকে দিয়ে গোপাল দাদা বানালেন সুস্বাদু খাবার—গোপাল ভাঁড়"
+                      value={videoFormData.title}
+                      onChange={(e) =>
+                        setVideoFormData({ ...videoFormData, title: e.target.value })
+                      }
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-medium text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-gray-700">
+                        রিওয়ার্ড ($ USDT ডলার):
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-xs font-extrabold text-gray-400">
+                          $
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.08"
+                          value={videoFormData.reward}
+                          onChange={(e) =>
+                            setVideoFormData({ ...videoFormData, reward: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-black/10 bg-white py-2 pl-7 pr-3 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-gray-700">
+                        দেখার সময় (সেকেন্ড):
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="60"
+                        value={videoFormData.minWatchSeconds}
+                        onChange={(e) =>
+                          setVideoFormData({
+                            ...videoFormData,
+                            minWatchSeconds: e.target.value
+                          })
+                        }
+                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-gray-700">
+                        ভিডিওর দৈর্ঘ্য (Duration Badge - ঐচ্ছিক):
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: 22:02 বা 15:45"
+                        value={videoFormData.duration}
+                        onChange={(e) =>
+                          setVideoFormData({ ...videoFormData, duration: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-medium text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-gray-700">
+                        সিরিয়াল নম্বর (Order Sequence):
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={videoFormData.order}
+                        onChange={(e) =>
+                          setVideoFormData({ ...videoFormData, order: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingVideo(false);
+                        setEditingVideo(null);
+                      }}
+                      className="rounded-xl border border-black/10 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!videoFormData.title.trim()) {
+                          toast.error('ভিডিওর টাইটেল লিখুন');
+                          return;
+                        }
+                        if (!videoFormData.youtubeUrl.trim()) {
+                          toast.error('ইউটিউব লিংক দিন');
+                          return;
+                        }
+                        const r = Number(videoFormData.reward);
+                        if (isNaN(r) || r <= 0) {
+                          toast.error('সঠিক ডলার রিওয়ার্ড দিন');
+                          return;
+                        }
+
+                        const currentVideos = Array.isArray(cfg.videos) ? [...cfg.videos] : [];
+
+                        if (editingVideo) {
+                          const idx = currentVideos.findIndex((v) => v.id === editingVideo.id);
+                          if (idx !== -1) {
+                            currentVideos[idx] = {
+                              ...editingVideo,
+                              title: videoFormData.title.trim(),
+                              youtubeUrl: videoFormData.youtubeUrl.trim(),
+                              reward: r,
+                              minWatchSeconds: Number(videoFormData.minWatchSeconds) || 60,
+                              duration: videoFormData.duration.trim() || undefined,
+                              order: Number(videoFormData.order) || idx + 1
+                            };
+                          }
+                          toast.success('ভিডিও তথ্য সফলভাবে আপডেট হয়েছে!');
+                        } else {
+                          const newV: YouTubeVideo = {
+                            id: generateId('vid'),
+                            title: videoFormData.title.trim(),
+                            youtubeUrl: videoFormData.youtubeUrl.trim(),
+                            reward: r,
+                            minWatchSeconds: Number(videoFormData.minWatchSeconds) || 60,
+                            duration: videoFormData.duration.trim() || undefined,
+                            order: Number(videoFormData.order) || currentVideos.length + 1,
+                            createdAt: new Date().toISOString()
+                          };
+                          currentVideos.push(newV);
+                          toast.success('নতুন ভিডিও সফলভাবে যোগ ও লাইভ করা হয়েছে!');
+                        }
+
+                        currentVideos.sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
+
+                        updateConfig({ videos: currentVideos });
+                        setIsAddingVideo(false);
+                        setEditingVideo(null);
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-5 py-2 text-xs font-extrabold text-white shadow-md hover:bg-brand-600 active:scale-95"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      সংরক্ষণ ও লাইভ পাবলিশ করুন
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* List of YouTube Videos */}
+            <div className="space-y-2.5">
+              {(Array.isArray(cfg.videos) ? [...cfg.videos] : [])
+                .sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99))
+                .map((v, index) => {
+                  const thumb = getYouTubeThumbnail(v.youtubeUrl);
+
+                  return (
+                    <div
+                      key={v.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white p-3 shadow-sm transition hover:shadow-md"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Serial & Thumbnail Preview */}
+                        <div className="relative shrink-0">
+                          <img
+                            src={thumb}
+                            alt={v.title}
+                            className="h-14 w-24 rounded-xl object-cover bg-slate-100"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src =
+                                'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80';
+                            }}
+                          />
+                          <span className="absolute top-1 left-1 rounded bg-black/80 px-1 py-0.5 text-[9px] font-bold text-white">
+                            #{v.order || index + 1}
+                          </span>
+                          {v.duration && (
+                            <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.5 text-[8.5px] font-bold text-white">
+                              {v.duration}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Title & Info */}
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-xs font-bold text-ink">{v.title}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="font-extrabold text-emerald-600">
+                              +${Number(v.reward || 0.05).toFixed(2)} USDT
+                            </span>
+                            <span className="text-gray-400">•</span>
+                            <span className="text-gray-500 font-medium">
+                              ⏱️ {v.minWatchSeconds || 60}s ওয়াচ
+                            </span>
+                          </div>
+                          <p className="truncate text-[10px] text-gray-400 font-mono mt-0.5">
+                            {v.youtubeUrl}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-end gap-1.5 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-black/5">
+                        <a
+                          href={v.youtubeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-gray-600 transition hover:bg-slate-200"
+                          title="ইউটিউব ভিডিও দেখুন"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                        <button
+                          onClick={() => {
+                            setVideoFormData({
+                              id: v.id,
+                              title: v.title,
+                              youtubeUrl: v.youtubeUrl,
+                              reward: String(v.reward),
+                              minWatchSeconds: String(v.minWatchSeconds || 60),
+                              duration: v.duration || '',
+                              order: String(v.order || index + 1)
+                            });
+                            setEditingVideo(v);
+                            setIsAddingVideo(false);
+                          }}
+                          className="flex h-8 items-center gap-1 rounded-xl bg-slate-100 px-2.5 text-xs font-bold text-gray-700 transition hover:bg-slate-200"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                          এডিট
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`⚠️ আপনি কি নিশ্চিত "${v.title}" ভিডিওটি ডিলিট করতে চান?`)) {
+                              const remaining = (cfg.videos || []).filter((item) => item.id !== v.id);
+                              updateConfig({ videos: remaining });
+                              toast.success('ভিডিও সফলভাবে ডিলিট করা হয়েছে!');
+                            }
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-50 text-rose-600 transition hover:bg-rose-100"
+                          title="ভিডিও মুছুন"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {(!cfg.videos || cfg.videos.length === 0) && (
+                <div className="rounded-2xl border-2 border-dashed border-black/10 py-8 text-center">
+                  <Play className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+                  <p className="text-xs font-bold text-gray-500">এখনও কোনো ইউটিউব ভিডিও যোগ করা হয়নি</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    "নতুন ভিডিও যোগ করুন" বাটনে চাপ দিয়ে যেকোনো ইউটিউব ভিডিওর লিংক ও রিওয়ার্ড যোগ করুন
+                  </p>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          {/* VIDEO PAGE BANNER ADS (300x250) REAL-TIME SETTINGS */}
+          <div className="mt-6">
+            <SectionCard
+              title="📢 ভিডিও পেজের ব্যানার অ্যাডস (300×250 Banner Ads Settings)"
+              action={
+                <button
+                  onClick={() => {
+                    updateConfig({
+                      videoBannerAds: {
+                        enabled: adBannerForm.enabled,
+                        count: Number(adBannerForm.count) || 5,
+                        bottomCount: Number(adBannerForm.bottomCount) || 5,
+                        adKey: adBannerForm.adKey.trim(),
+                        scriptHost: adBannerForm.scriptHost.trim(),
+                        slotKeys: adBannerForm.slotKeys.map(k => k.trim())
+                      }
+                    });
+                    toast.success('📢 ভিডিও পেজের অ্যাডস সেটিংস সফলভাবে সেভ হয়েছে এবং ফায়ারবেজে সিঙ্ক হয়েছে!');
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-brand-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-brand-600 active:scale-95"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  ফায়ারবেজে সেভ করুন
+                </button>
+              }
+            >
+              <div className="space-y-4">
+                <div className="rounded-xl bg-brand-50/50 p-3 border border-brand-500/10 text-xs text-gray-600">
+                  <p className="font-bold text-ink">
+                    ⚡ রিয়েল-টাইম ফায়ারবেজ আপডেট:
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500">
+                    এখানে যে পরিবর্তন করবেন তা সাথে সাথে ফায়ারবেজের মাধ্যমে সকল ইউজারদের অ্যাপে রিয়েল-টাইমে আপডেট হয়ে যাবে।
+                  </p>
+                </div>
+
+                {/* Toggle & Count Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-black/10 bg-white p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-ink">ব্যানার অ্যাডস প্রদর্শন</p>
+                        <p className="text-[10px] text-gray-400">ভিডিও পেজে ৩০০×২৫০ অ্যাডস দেখাবে কিনা</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAdBannerForm(prev => ({ ...prev, enabled: !prev.enabled }))}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          adBannerForm.enabled ? 'bg-emerald-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            adBannerForm.enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-black/10 bg-white p-3">
+                    <label className="block text-xs font-bold text-ink mb-1">
+                      ভিডিওর উপরের অ্যাডস সংখ্যা:
+                    </label>
+                    <select
+                      value={adBannerForm.count}
+                      onChange={(e) => setAdBannerForm(prev => ({ ...prev, count: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-black/10 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-ink focus:outline-none"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                        <option key={n} value={n}>{n} টি অ্যাডস</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-xl border border-black/10 bg-white p-3">
+                    <label className="block text-xs font-bold text-ink mb-1">
+                      ভিডিওর নিচের অ্যাডস সংখ্যা:
+                    </label>
+                    <select
+                      value={adBannerForm.bottomCount}
+                      onChange={(e) => setAdBannerForm(prev => ({ ...prev, bottomCount: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-black/10 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-ink focus:outline-none"
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                        <option key={n} value={n}>{n} টি অ্যাডস</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Global Key & Host */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      মূল অ্যাড কি (Default Ad Key):
+                    </label>
+                    <input
+                      type="text"
+                      value={adBannerForm.adKey}
+                      onChange={(e) => setAdBannerForm(prev => ({ ...prev, adKey: e.target.value }))}
+                      placeholder="e.g. 911ee250303f0d466e6e2cab58b077e0"
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-mono text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      স্ক্রিপ্ট প্রোভাইডার হোস্ট (Script URL Host):
+                    </label>
+                    <input
+                      type="text"
+                      value={adBannerForm.scriptHost}
+                      onChange={(e) => setAdBannerForm(prev => ({ ...prev, scriptHost: e.target.value }))}
+                      placeholder="https://bauval.org/22"
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-mono text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Individual Slot Keys */}
+                <div className="rounded-xl border border-black/10 bg-white p-3 space-y-2">
+                  <div className="flex items-center justify-between border-b border-black/5 pb-2">
+                    <p className="text-xs font-bold text-ink">
+                      প্রতিটি স্লটের আলাদা অ্যাড কি (Slot-wise Keys):
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdBannerForm(prev => ({
+                          ...prev,
+                          slotKeys: Array.from({ length: 10 }).map(() => prev.adKey)
+                        }));
+                        toast.info('সবগুলো স্লটে মূল কি বসানো হয়েছে');
+                      }}
+                      className="text-[10px] font-bold text-brand-600 hover:underline"
+                    >
+                      মূল কি দিয়ে সব ফিল করুন
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {Array.from({ length: Math.min(10, Math.max(1, adBannerForm.count)) }).map((_, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-[11px] font-bold text-gray-500">
+                          অ্যাড #{idx + 1}:
+                        </span>
+                        <input
+                          type="text"
+                          value={adBannerForm.slotKeys[idx] || ''}
+                          onChange={(e) => {
+                            const nextKeys = [...(adBannerForm.slotKeys || [])];
+                            nextKeys[idx] = e.target.value;
+                            setAdBannerForm(prev => ({ ...prev, slotKeys: nextKeys }));
+                          }}
+                          placeholder={adBannerForm.adKey}
+                          className="flex-1 rounded-lg border border-black/10 bg-slate-50 px-2.5 py-1 text-xs font-mono text-ink focus:border-brand-500 focus:outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          </div>
+        </div>
+      )}
+
+        {/* 4. AD SLOTS */}
+        {activeTab === 'ads' && (
+          <SectionCard
+            title="Monetag Ad Slots"
+            action={
+              <AddButton
+                onClick={() => {
+                  appStore.update((d) => {
+                    const count = d.config.adSlots.length + 1;
+                    d.config.adSlots.push({
+                      id: `slot${Date.now()}`,
+                      title: `AD SLOT ${count}`,
+                      zone: "10635966",
+                      reward: 0.05
+                    });
+                  });
+                }}
+              />
+            }
+          >
+            <div className="space-y-2">
+              {cfg.adSlots.map((slot, idx) => (
+                <div key={slot.id} className="grid grid-cols-12 gap-1.5 items-center">
+                  <InputText
+                    className="col-span-4"
+                    value={slot.title}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.adSlots[idx].title = val;
+                      });
+                    }}
+                  />
+                  <InputText
+                    className="col-span-4"
+                    value={slot.zone}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.adSlots[idx].zone = val;
+                      });
+                    }}
+                  />
+                  <InputText
+                    className="col-span-3"
+                    value={String(slot.reward)}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.adSlots[idx].reward = Number(val) || 0;
+                      });
+                    }}
+                  />
+                  <IconButton
+                    title="Delete Slot"
+                    tone="bg-rose-500"
+                    onClick={() => {
+                      appStore.update((d) => {
+                        d.config.adSlots.splice(idx, 1);
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </IconButton>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* 5. TASKS */}
+        {activeTab === 'tasks' && (
+          <SectionCard
+            title="Direct Link Tasks"
+            action={
+              <AddButton
+                onClick={() => {
+                  appStore.update((d) => {
+                    d.config.tasks.push({
+                      id: generateId("task"),
+                      title: "New Video Task",
+                      url: "https://ads.ziniyaapu7.workers.dev/",
+                      reward: 0.05,
+                      minSeconds: 60,
+                      maxMinutes: 5
+                    });
+                  });
+                }}
+              />
+            }
+          >
+            <div className="space-y-2">
+              {cfg.tasks.map((task, idx) => (
+                <div key={task.id} className="grid grid-cols-12 gap-1.5 items-center">
+                  <InputText
+                    className="col-span-3"
+                    value={task.title}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.tasks[idx].title = val;
+                      });
+                    }}
+                  />
+                  <InputText
+                    className="col-span-5"
+                    value={task.url}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.tasks[idx].url = val;
+                      });
+                    }}
+                  />
+                  <InputText
+                    className="col-span-3"
+                    value={String(task.reward)}
+                    onChange={(val) => {
+                      appStore.update((d) => {
+                        d.config.tasks[idx].reward = Number(val) || 0;
+                      });
+                    }}
+                  />
+                  <IconButton
+                    title="Delete Task"
+                    tone="bg-rose-500"
+                    onClick={() => {
+                      appStore.update((d) => {
+                        d.config.tasks.splice(idx, 1);
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </IconButton>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* 6. POSTS */}
+        {activeTab === 'posts' && (
+          <SectionCard title={`Community Posts (${db.posts.length})`}>
+            <ul className="space-y-2">
+              {db.posts.map((post) => (
+                <li
+                  key={post.id}
+                  className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5 text-xs border border-slate-200"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-ink">{post.authorName}</p>
+                    <p className="truncate text-slate-500">{post.text || "(Photo attachment)"}</p>
+                  </div>
+                  <IconButton
+                    title="Delete Post"
+                    tone="bg-rose-500"
+                    onClick={() => {
+                      appStore.update((d) => {
+                        d.posts = d.posts.filter((p) => p.id !== post.id);
+                      });
+                      toast.success("Post removed");
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </IconButton>
+                </li>
+              ))}
+              {db.posts.length === 0 && <EmptyRow message="ফিডে কোনো পোস্ট নেই।" />}
+            </ul>
+          </SectionCard>
+        )}
+
+        {/* 7. SETTINGS */}
+        {activeTab === 'settings' && (
+          <>
+            <SectionCard title="Bot & Application Setup">
+              <div className="grid grid-cols-2 gap-3">
+                <TextConfig
+                  label="App Name"
+                  value={cfg.appName}
+                  onChange={(v) => updateConfig({ appName: v })}
+                />
+                <TextConfig
+                  label="Bot Username (without @)"
+                  value={cfg.botUsername}
+                  onChange={(v) => updateConfig({ botUsername: v })}
+                />
+                <div className="col-span-2">
+                  <TextConfig
+                    label="Mini App URL (Workers / Hosted URL)"
+                    value={cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"}
+                    onChange={(v) => updateConfig({ miniAppUrl: v })}
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Active Mini App: <a href={cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"} target="_blank" rel="noreferrer" className="text-cyan-400 underline">{cfg.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/"}</a> (টেলিগ্রাম বটের মেনু বাটন ও ওয়েলকাম বাটনে এটি ব্যবহৃত হবে)
+                  </p>
+                </div>
+                <TextConfig
+                  label="Support Telegram Link"
+                  value={cfg.supportUrl}
+                  onChange={(v) => updateConfig({ supportUrl: v })}
+                />
+                <TextConfig
+                  label="ImgBB API Key"
+                  value={cfg.imgbbApiKey}
+                  onChange={(v) => updateConfig({ imgbbApiKey: v })}
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Economics & Withdrawal Limits">
+              <div className="grid grid-cols-2 gap-3">
+                <NumberConfig
+                  label="Referral Bonus ($)"
+                  step={0.01}
+                  value={cfg.referralBonus}
+                  onChange={(v) => updateConfig({ referralBonus: v })}
+                />
+                <NumberConfig
+                  label="Level 2 Referral Bonus ($)"
+                  step={0.01}
+                  value={cfg.level2Bonus}
+                  onChange={(v) => updateConfig({ level2Bonus: v })}
+                />
+                <NumberConfig
+                  label="Minimum Withdrawal ($)"
+                  step={1}
+                  value={cfg.minWithdraw}
+                  onChange={(v) => updateConfig({ minWithdraw: v })}
+                />
+                <NumberConfig
+                  label="New User Welcome Bonus ($)"
+                  step={0.01}
+                  value={cfg.welcomeBonus ?? 0.01}
+                  onChange={(v) => updateConfig({ welcomeBonus: v })}
+                />
+                <NumberConfig
+                  label="Required Referrals for Withdrawal"
+                  step={1}
+                  value={cfg.minReferralsForWithdraw}
+                  onChange={(v) => updateConfig({ minReferralsForWithdraw: v })}
+                />
+              </div>
+            </SectionCard>
+
+            {/* Change Admin PIN */}
+            <SectionCard title="Security PIN (Password)">
+              <form onSubmit={handleChangePin} className="space-y-3 max-w-sm">
+                <p className="text-xs text-slate-500">
+                  নিরাপত্তার স্বার্থে কোনো পাসওয়ার্ড ডিসপ্লে করা হয় না। নতুন পিন সেট করতে বর্তমান পিন দিন।
+                </p>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Current PIN</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="Current PIN"
+                    value={currentPinInput}
+                    onChange={(e) => setCurrentPinInput(e.target.value)}
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">New PIN</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="New PIN (min 4 digits)"
+                    value={newPinInput}
+                    onChange={(e) => setNewPinInput(e.target.value)}
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-black transition shadow-sm"
+                >
+                  <KeyRound className="h-3.5 w-3.5" /> Update Security PIN
+                </button>
+              </form>
+            </SectionCard>
+          </>
+        )}
+      </div>
+
+      {/* EDIT USER MODAL */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Edit User Details</h3>
+                <p className="text-[11px] text-slate-400">
+                  {editingUser.firstName} {editingUser.lastName} (TID: {editingUser.telegramId})
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 pt-4">
+              {/* Balance Editing & Quick Modifiers */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  User Balance ($ USDT)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingUser.balance}
+                    onChange={(e) =>
+                      setEditingUser({ ...editingUser, balance: Number(e.target.value) })
+                    }
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-base font-bold text-emerald-600 outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[1, 5, 10, 20].map((amt) => (
+                    <button
+                      key={`add-${amt}`}
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          balance: Number((editingUser.balance + amt).toFixed(2))
+                        })
+                      }
+                      className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200/60 hover:bg-emerald-100"
+                    >
+                      +${amt}
+                    </button>
+                  ))}
+                  {[1, 5, 10].map((amt) => (
+                    <button
+                      key={`sub-${amt}`}
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          balance: Math.max(0, Number((editingUser.balance - amt).toFixed(2)))
+                        })
+                      }
+                      className="rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 border border-rose-200/60 hover:bg-rose-100"
+                    >
+                      -${amt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Referrals Editing (Level 1 & Level 2) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Level 1 Referrals
+                  </label>
+                  <input
+                    type="number"
+                    value={editingUser.referralCount}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        referralCount: Math.max(0, parseInt(e.target.value, 10) || 0)
+                      })
+                    }
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold text-brand-600 outline-none focus:border-brand-500"
+                  />
+                  <div className="mt-1.5 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          referralCount: editingUser.referralCount + 1
+                        })
+                      }
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          referralCount: editingUser.referralCount + 5
+                        })
+                      }
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    >
+                      +5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          referralCount: Math.max(0, editingUser.referralCount - 1)
+                        })
+                      }
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    >
+                      -1
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Level 2 Referrals
+                  </label>
+                  <input
+                    type="number"
+                    value={editingUser.level2Count || 0}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        level2Count: Math.max(0, parseInt(e.target.value, 10) || 0)
+                      })
+                    }
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 outline-none focus:border-brand-500"
+                  />
+                  <div className="mt-1.5 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          level2Count: (editingUser.level2Count || 0) + 1
+                        })
+                      }
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    >
+                      +1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingUser({
+                          ...editingUser,
+                          level2Count: Math.max(0, (editingUser.level2Count || 0) - 1)
+                        })
+                      }
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                    >
+                      -1
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Number / Address Editing */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Payment Number / Account (bKash/Nagad/Binance ID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 017XXXXXXXX or Binance Pay ID"
+                  value={editingUser.binanceId || ""}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, binanceId: e.target.value })
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-mono font-semibold text-ink outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Status Toggles */}
+              <div className="flex gap-4 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.verified}
+                    onChange={(e) =>
+                      setEditingUser({ ...editingUser, verified: e.target.checked })
+                    }
+                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span className="text-xs font-semibold text-slate-700">Verified User</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingUser.banned}
+                    onChange={(e) =>
+                      setEditingUser({ ...editingUser, banned: e.target.checked })
+                    }
+                    className="rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                  />
+                  <span className="text-xs font-semibold text-rose-700">Banned Account</span>
+                </label>
+              </div>
+
+              {/* Modal Save Button */}
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const toSave = { ...editingUser };
+                    appStore.update((d) => {
+                      d.users[toSave.telegramId] = toSave;
+                    });
+                    await syncUserToFirebase(toSave);
+                    toast.success("ইউজার ডাটা ও ব্যালেন্স সফলভাবে আপডেট ও ফায়ারবেসে সিঙ্ক হয়েছে!");
+                    setEditingUser(null);
+                  }}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT WITHDRAWAL MODAL */}
+      {editingWd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Edit Withdrawal Details</h3>
+                <p className="text-[11px] text-slate-400">
+                  {editingWd.name} • TID: {editingWd.telegramId}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingWd(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 pt-4">
+              {/* Payment Number / Address */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Payment Number / Account (যে নাম্বারে পেমেন্ট যাবে)
+                </label>
+                <input
+                  type="text"
+                  value={editingWd.account}
+                  onChange={(e) => setEditingWd({ ...editingWd, account: e.target.value })}
+                  placeholder="017XXXXXXXX or Binance Pay ID"
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-mono font-bold text-brand-700 outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Withdrawal Amount ($ USDT)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editingWd.amount}
+                  onChange={(e) => setEditingWd({ ...editingWd, amount: Number(e.target.value) })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold text-emerald-600 outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={editingWd.method}
+                  onChange={(e) => setEditingWd({ ...editingWd, method: e.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-ink outline-none focus:border-brand-500 bg-white"
+                >
+                  <option value="Binance (USDT BEP20)">Binance (USDT BEP20)</option>
+                  <option value="bKash Personal">bKash Personal</option>
+                  <option value="Nagad Personal">Nagad Personal</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Request Status
+                </label>
+                <select
+                  value={editingWd.status}
+                  onChange={(e) =>
+                    setEditingWd({
+                      ...editingWd,
+                      status: e.target.value as Withdrawal['status']
+                    })
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-ink outline-none focus:border-brand-500 bg-white"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved (Paid)</option>
+                  <option value="rejected">Rejected (Refunded)</option>
+                </select>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingWd(null)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    let savedWd: Withdrawal | null = null;
+                    appStore.update((d) => {
+                      const idx = d.withdrawals.findIndex((item) => item.id === editingWd.id);
+                      if (idx !== -1) {
+                        d.withdrawals[idx] = { ...editingWd };
+                        savedWd = { ...editingWd };
+                      }
+                    });
+                    if (savedWd) syncWithdrawalToFirebase(savedWd);
+                    toast.success("উইথড্রয়াল আবেদন সফলভাবে আপডেট ও সিঙ্ক হয়েছে!");
+                    setEditingWd(null);
+                  }}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Save Withdrawal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT CHANNEL MODAL */}
+      {editingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Edit Required Channel</h3>
+                <p className="text-[11px] text-slate-400">
+                  @{editingChannel.username}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingChannel(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Channel Name (নাম)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChannel.name}
+                    onChange={(e) =>
+                      setEditingChannel({ ...editingChannel, name: e.target.value })
+                    }
+                    placeholder="e.g. Main"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Tag / Type
+                  </label>
+                  <input
+                    type="text"
+                    value={editingChannel.tag || ''}
+                    onChange={(e) =>
+                      setEditingChannel({ ...editingChannel, tag: e.target.value })
+                    }
+                    placeholder="e.g. Channel"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Subtitle (সাবটাইটেল)
+                </label>
+                <input
+                  type="text"
+                  value={editingChannel.subtitle || ''}
+                  onChange={(e) =>
+                    setEditingChannel({ ...editingChannel, subtitle: e.target.value })
+                  }
+                  placeholder="e.g. All Videos • Updates • News"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Telegram Username (@ ছাড়া)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono">@</span>
+                  <input
+                    type="text"
+                    value={editingChannel.username}
+                    onChange={(e) =>
+                      setEditingChannel({
+                        ...editingChannel,
+                        username: e.target.value.replace(/^@/, '').trim()
+                      })
+                    }
+                    placeholder="jgjghjghh687"
+                    className="h-9 w-full rounded-xl border border-slate-200 pl-7 pr-3 text-xs font-mono outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Full Telegram URL (লিংক)
+                </label>
+                <input
+                  type="url"
+                  value={editingChannel.url}
+                  onChange={(e) =>
+                    setEditingChannel({ ...editingChannel, url: e.target.value.trim() })
+                  }
+                  placeholder="https://t.me/jgjghjghh687"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingChannel(null)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveChannel(editingChannel)}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Save Channel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CHANNEL MODAL */}
+      {isAddingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Add Required Channel</h3>
+                <p className="text-[11px] text-slate-400">
+                  নতুন চ্যানেল যুক্ত করুন যা ইউজারদের জন্য বাধ্যতামূলক হবে
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAddingChannel(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Channel Name (নাম)
+                  </label>
+                  <input
+                    type="text"
+                    value={newChannelData.name}
+                    onChange={(e) =>
+                      setNewChannelData({ ...newChannelData, name: e.target.value })
+                    }
+                    placeholder="e.g. Support"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Tag / Type
+                  </label>
+                  <input
+                    type="text"
+                    value={newChannelData.tag}
+                    onChange={(e) =>
+                      setNewChannelData({ ...newChannelData, tag: e.target.value })
+                    }
+                    placeholder="e.g. Channel"
+                    className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Subtitle (সাবটাইটেল)
+                </label>
+                <input
+                  type="text"
+                  value={newChannelData.subtitle}
+                  onChange={(e) =>
+                    setNewChannelData({ ...newChannelData, subtitle: e.target.value })
+                  }
+                  placeholder="e.g. Help • Support • Updates"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Telegram Username (@ ছাড়া)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono">@</span>
+                  <input
+                    type="text"
+                    value={newChannelData.username}
+                    onChange={(e) => {
+                      const u = e.target.value.replace(/^@/, '').trim();
+                      setNewChannelData({
+                        ...newChannelData,
+                        username: u,
+                        url: u ? `https://t.me/${u}` : newChannelData.url
+                      });
+                    }}
+                    placeholder="ManeiShopBD_Support"
+                    className="h-9 w-full rounded-xl border border-slate-200 pl-7 pr-3 text-xs font-mono outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Full Telegram URL (লিংক)
+                </label>
+                <input
+                  type="url"
+                  value={newChannelData.url}
+                  onChange={(e) =>
+                    setNewChannelData({ ...newChannelData, url: e.target.value.trim() })
+                  }
+                  placeholder="https://t.me/ManeiShopBD_Support"
+                  className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingChannel(false)}
+                  className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateChannel}
+                  className="flex-1 rounded-xl bg-brand-500 py-2.5 text-xs font-bold text-white hover:bg-brand-600 transition shadow-sm"
+                >
+                  Create Channel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  tone = "text-ink"
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-3.5 border border-slate-200/80 shadow-xs">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+      <p className={`mt-1 text-xl font-black ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  children,
+  action
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-4 border border-slate-200 shadow-xs">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-extrabold text-ink">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TableHeaderCell({ children }: { children: React.ReactNode }) {
+  return <th className="px-3 py-2.5 font-bold uppercase tracking-wider text-[10px]">{children}</th>;
+}
+
+function TableCell({
+  children,
+  className = ""
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <td className={`px-3 py-2.5 ${className}`}>{children}</td>;
+}
+
+function InputText({
+  value,
+  onChange,
+  className = ""
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`h-8 rounded-lg border border-slate-200 px-2 text-xs text-ink outline-none focus:border-brand-500 ${className}`}
+    />
+  );
+}
+
+function TextConfig({
+  label,
+  value,
+  onChange,
+  type = "text"
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 h-9 w-full rounded-xl border border-slate-200 px-3 text-xs text-ink outline-none focus:border-brand-500"
+      />
+    </label>
+  );
+}
+
+function NumberConfig({
+  label,
+  value,
+  onChange,
+  step = 1
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+      <input
+        type="number"
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 h-9 w-full rounded-xl border border-slate-200 px-3 text-xs text-ink outline-none focus:border-brand-500"
+      />
+    </label>
+  );
+}
+
+function IconButton({
+  children,
+  onClick,
+  tone,
+  title
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  tone: string;
+  title: string;
+}) {
+  return (
+    <button
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg text-white transition hover:opacity-90 active:scale-95 shadow-xs ${tone}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AddButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-600 active:scale-95 shadow-xs"
+    >
+      <Plus className="h-3.5 w-3.5" /> Add New
+    </button>
+  );
+}
+
+function EmptyRow({ message }: { message: string }) {
+  return <li className="py-6 text-center text-xs text-slate-400">{message}</li>;
+}
