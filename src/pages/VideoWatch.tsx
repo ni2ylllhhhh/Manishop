@@ -59,6 +59,7 @@ export function VideoWatch() {
 
   const todayStr = getTodayDateString();
   const storageKey = liveUser ? `c2c_vid_watched_${liveUser.telegramId}_${currentVideo?.id}_${todayStr}` : '';
+  const progressKey = liveUser && currentVideo ? `c2c_vid_active_sec_${liveUser.telegramId}_${currentVideo.id}` : '';
 
   const isPermanentlyWatched = liveUser && currentVideo ? isVideoWatchedByUser(liveUser.telegramId, currentVideo.id) : false;
 
@@ -72,30 +73,66 @@ export function VideoWatch() {
     }
   });
 
+  const getSavedProgress = (): number => {
+    if (!progressKey) return 0;
+    try {
+      const raw = sessionStorage.getItem(progressKey) || localStorage.getItem(progressKey);
+      if (raw) {
+        const val = parseInt(raw, 10);
+        if (!isNaN(val) && val > 0 && val < targetSeconds) {
+          return val;
+        }
+      }
+    } catch {}
+    return 0;
+  };
+
   const [secondsElapsed, setSecondsElapsed] = useState<number>(() => {
-    return alreadyClaimed ? targetSeconds : 0;
+    if (isPermanentlyWatched || alreadyClaimed) return targetSeconds;
+    return getSavedProgress();
   });
   const [isClaiming, setIsClaiming] = useState<boolean>(false);
   const [justClaimed, setJustClaimed] = useState<boolean>(false);
   const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
-  // Track page visibility using document.visibilityState / document.hidden
-  // Note: We deliberately do NOT use window.blur because clicking inside YouTube or Ad iframes
-  // fires a window blur event, which was falsely freezing the timer!
+
+  // Track page visibility and active presence
   const [isPageActive, setIsPageActive] = useState<boolean>(true);
 
   useEffect(() => {
-    const updateVisibility = () => {
+    const handleVisibility = () => {
       const isVisible = document.visibilityState === 'visible' && !document.hidden;
       setIsPageActive(isVisible);
     };
 
-    updateVisibility();
+    const handleWindowBlur = () => {
+      // If the activeElement is an IFRAME (e.g. YouTube video or in-page ad banner),
+      // the user is interacting with content on this page, so do NOT pause!
+      // But if activeElement is NOT an iframe, the user clicked outside or switched apps/tabs, so pause.
+      const activeEl = document.activeElement;
+      const isInsideIframe = activeEl && activeEl.tagName === 'IFRAME';
+      if (!isInsideIframe) {
+        setIsPageActive(false);
+      }
+    };
 
-    document.addEventListener('visibilitychange', updateVisibility);
+    const handleWindowFocus = () => {
+      if (document.visibilityState === 'visible' && !document.hidden) {
+        setIsPageActive(true);
+      }
+    };
 
-    // Any touch, click, or scroll on the window confirms the user is here
+    // Immediate check
+    handleVisibility();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('pageshow', handleWindowFocus);
+    window.addEventListener('pagehide', handleWindowBlur);
+
+    // Any touch, click, or scroll on window confirms user presence
     const onUserActivity = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !document.hidden) {
         setIsPageActive(true);
       }
     };
@@ -104,21 +141,15 @@ export function VideoWatch() {
     window.addEventListener('scroll', onUserActivity, { passive: true });
     window.addEventListener('click', onUserActivity, { passive: true });
 
-    // Periodic check: if page is currently visible, ensure timer is running
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && !document.hidden) {
-        setIsPageActive(true);
-      } else {
-        setIsPageActive(false);
-      }
-    }, 800);
-
     return () => {
-      document.removeEventListener('visibilitychange', updateVisibility);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handleWindowFocus);
+      window.removeEventListener('pagehide', handleWindowBlur);
       window.removeEventListener('touchstart', onUserActivity);
       window.removeEventListener('scroll', onUserActivity);
       window.removeEventListener('click', onUserActivity);
-      clearInterval(interval);
     };
   }, []);
 
@@ -202,7 +233,12 @@ export function VideoWatch() {
       const isClaimed = localStorage.getItem(storageKey) === '1';
       setAlreadyClaimed(isClaimed);
       setJustClaimed(false);
-      setSecondsElapsed(isClaimed ? targetSeconds : 0);
+      setSecondsElapsed((prev) => {
+        if (isClaimed) return targetSeconds;
+        if (prev > 0) return prev;
+        const saved = getSavedProgress();
+        return saved > 0 ? saved : 0;
+      });
       setShowExitConfirm(false);
     } catch {
       setAlreadyClaimed(false);
@@ -218,7 +254,20 @@ export function VideoWatch() {
     const timer = setInterval(() => {
       setSecondsElapsed((prev) => {
         const next = prev + 1;
+        try {
+          if (progressKey && next < targetSeconds) {
+            sessionStorage.setItem(progressKey, String(next));
+            localStorage.setItem(progressKey, String(next));
+          }
+        } catch {}
+
         if (next >= targetSeconds) {
+          try {
+            if (progressKey) {
+              sessionStorage.removeItem(progressKey);
+              localStorage.removeItem(progressKey);
+            }
+          } catch {}
           triggerHaptic('success');
           return targetSeconds;
         }
@@ -380,6 +429,10 @@ export function VideoWatch() {
 
       try {
         localStorage.setItem(storageKey, '1');
+        if (progressKey) {
+          sessionStorage.removeItem(progressKey);
+          localStorage.removeItem(progressKey);
+        }
       } catch {}
 
       setAlreadyClaimed(true);
@@ -737,6 +790,12 @@ export function VideoWatch() {
               <button
                 onClick={() => {
                   setShowExitConfirm(false);
+                  if (progressKey) {
+                    try {
+                      sessionStorage.removeItem(progressKey);
+                      localStorage.removeItem(progressKey);
+                    } catch {}
+                  }
                   navigate('/');
                 }}
                 className="flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-[12px] font-bold text-rose-600 transition hover:bg-rose-100 active:scale-98"
