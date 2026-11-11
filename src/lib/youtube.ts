@@ -47,7 +47,8 @@ export function getYouTubeEmbedUrl(url: string, autoplay = true): string {
     iv_load_policy: '3',
     fs: '0',
     disablekb: '1',
-    controls: '1'
+    controls: '1',
+    vq: 'medium'
   });
   if (origin) {
     params.set('origin', origin);

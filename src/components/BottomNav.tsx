@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Users, Trophy, Wallet, User as UserIcon } from 'lucide-react';
+import { Home, Users, ListTodo, Wallet, User as UserIcon } from 'lucide-react';
 import { triggerHaptic } from '../lib/telegram';
 
 interface NavItem {
@@ -12,7 +12,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Home", icon: Home },
   { to: "/refer", label: "Refer", icon: Users },
-  { to: "/rank", label: "Rank", icon: Trophy, center: true },
+  { to: "/tasks", label: "Task", icon: ListTodo, center: true },
   { to: "/wallet", label: "Wallet", icon: Wallet },
   { to: "/profile", label: "Profile", icon: UserIcon }
 ];
@@ -45,7 +45,7 @@ export function BottomNav() {
                     isActive ? "bg-brand-500 shadow-md" : "bg-brand-100"
                   }`}
                 >
-                  <Trophy
+                  <Icon
                     className={`h-5 w-5 ${isActive ? "text-white" : "text-brand-500"}`}
                   />
                 </span>

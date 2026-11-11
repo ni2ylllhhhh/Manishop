@@ -16,10 +16,12 @@ import { AdsterraBanner } from '../components/AdsterraBanner';
 import { triggerHaptic } from '../lib/telegram';
 
 export function Profile() {
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
   const db = useAppStore();
   const config = db.config;
   const navigate = useNavigate();
+
+  const user = (authUser?.telegramId && db.users[authUser.telegramId]) ? db.users[authUser.telegramId] : authUser;
 
   const rankTier = useMemo(() => {
     const refs = user?.referralCount ?? 0;
@@ -57,11 +59,11 @@ export function Profile() {
             </p>
             {user.verified ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9.5px] font-bold text-emerald-600 border border-emerald-200">
-                ✅ চ্যানেল ভেরিফাইড
+                ✅ Channel Verified
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[9.5px] font-bold text-red-600 border border-red-200">
-                ❌ আনভেরিফাইড
+                ❌ Unverified
               </span>
             )}
           </div>
@@ -102,26 +104,11 @@ export function Profile() {
           {user.verified ? "Verified Member" : "Standard Member"} • Joined {formatDate(user.createdAt)}
         </div>
 
-        {/* 3 Stats: Balance, Referrals, Earned (with direct Leaderboard navigation) */}
+        {/* 3 Stats: Balance, Referrals, Referral Earnings */}
         <div className="mt-3 grid grid-cols-3 gap-2">
-          <StatBox label="Balance" value={`$${user.balance.toFixed(2)}`} />
-          <StatBox label="Referrals" value={String(user.referralCount)} />
-          <button
-            onClick={() => {
-              triggerHaptic('light');
-              navigate('/rank');
-            }}
-            className="group flex flex-col items-center justify-center rounded-xl bg-gradient-to-b from-amber-50 to-cream py-2 px-1 text-center border border-amber-300 shadow-xs transition-all duration-150 hover:bg-amber-100 hover:border-amber-400 active:scale-95 cursor-pointer relative"
-            title="লিডারবোর্ড দেখুন"
-          >
-            <p className="text-[13px] font-extrabold text-ink group-hover:text-amber-700 transition-colors">
-              ${user.lifetimeEarned.toFixed(2)}
-            </p>
-            <p className="mt-0.5 flex items-center justify-center gap-1 text-[9.5px] font-extrabold text-amber-600 uppercase tracking-wide group-hover:text-amber-700">
-              <Trophy className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
-              <span>লিডারবোর্ড</span>
-            </p>
-          </button>
+          <StatBox label="BALANCE" value={`$${user.balance.toFixed(2)}`} />
+          <StatBox label="REFERRALS" value={String(user.referralCount)} />
+          <StatBox label="REF EARNED" value={`$${(Number(user.referralEarned) || 0).toFixed(2)}`} />
         </div>
 
         {/* Dedicated Leaderboard Action Button */}
@@ -137,8 +124,8 @@ export function Profile() {
               <Trophy className="h-4 w-4" />
             </div>
             <div className="text-left">
-              <p className="text-[12px] font-extrabold text-ink leading-tight">লিডারবোর্ড দেখুন</p>
-              <p className="text-[10px] text-gray-500">শীর্ষ ১০ জন ইউজারের তালিকা ও আয়</p>
+              <p className="text-[12px] font-extrabold text-ink leading-tight">View Leaderboard</p>
+              <p className="text-[10px] text-gray-500">Top 50 users ranking & earnings</p>
             </div>
           </div>
           <ChevronRight className="h-4 w-4 text-amber-600" />

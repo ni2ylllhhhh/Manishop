@@ -14,6 +14,7 @@ import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
 import { VideoWatch } from './pages/VideoWatch';
+import { Tasks } from './pages/Tasks';
 
 function AdminAutoRedirect() {
   const navigate = useNavigate();
@@ -84,6 +85,8 @@ function AppShell() {
                 <Route path="/" element={<Home />} />
                 <Route path="/video/:videoId" element={<VideoWatch />} />
                 <Route path="/refer" element={<Refer />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/task" element={<Navigate to="/tasks" replace />} />
                 <Route path="/rank" element={<RankList />} />
                 <Route path="/wallet" element={<Wallet />} />
                 <Route path="/wallet/cashout" element={<CashOut />} />

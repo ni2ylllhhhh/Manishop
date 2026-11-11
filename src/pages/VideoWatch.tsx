@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   X,
   ShieldAlert,
-  ShieldCheck,
   Timer
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,6 +20,7 @@ import { extractYouTubeId, getYouTubeEmbedUrl, getYouTubeThumbnail } from '../li
 import { triggerHaptic } from '../lib/telegram';
 import { formatUsd } from '../lib/format';
 import { AdsterraBanner } from '../components/AdsterraBanner';
+import { AdsterraNativeBanner } from '../components/AdsterraNativeBanner';
 
 function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -35,6 +35,7 @@ export function VideoWatch() {
   const db = useAppStore();
   const config = db.config || authConfig;
   const videoSectionRef = useRef<HTMLDivElement>(null);
+  const videoIframeRef = useRef<HTMLIFrameElement>(null);
 
   const liveUser = (user?.telegramId && db.users[user.telegramId]) ? db.users[user.telegramId] : user;
 
@@ -140,14 +141,51 @@ export function VideoWatch() {
     };
   }, []);
 
+  // Strictly enforce 360p (medium) video playback quality
+  useEffect(() => {
+    const iframe = videoIframeRef.current;
+    if (!iframe) return;
+
+    const enforce360p = () => {
+      try {
+        iframe.contentWindow?.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: 'setPlaybackQuality',
+            args: ['medium']
+          }),
+          '*'
+        );
+        iframe.contentWindow?.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: 'setPlaybackQualityRange',
+            args: ['medium', 'medium']
+          }),
+          '*'
+        );
+      } catch {}
+    };
+
+    const t1 = setTimeout(enforce360p, 1000);
+    const t2 = setTimeout(enforce360p, 2500);
+    const t3 = setTimeout(enforce360p, 5000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [videoId, currentVideo?.id]);
+
   // Sync already claimed status and check if video is already completed
   useEffect(() => {
-    if (!liveUser || !currentVideo) return;
+    if (!liveUser || !currentVideo || justClaimed) return;
     const isWatched = isVideoWatchedByUser(liveUser.telegramId, currentVideo.id);
     if (isWatched) {
       setAlreadyClaimed(true);
       setSecondsElapsed(targetSeconds);
-      // Auto forward to next unwatched video
+      // Auto forward to next unwatched video only if directly opening an old already-watched video
       const nextUnwatched = videos.find((v) => !isVideoWatchedByUser(liveUser.telegramId, v.id));
       if (nextUnwatched && nextUnwatched.id !== currentVideo.id) {
         toast.info('এই ভিডিওটি আগে দেখা হয়েছে। নতুন ভিডিও লোড করা হচ্ছে...', { duration: 2500 });
@@ -216,38 +254,26 @@ export function VideoWatch() {
     };
   }, [config.videoBannerAds?.popunderUrl, config.videoBannerAds?.popunderEnabled]);
 
-  // Slow, gentle auto-scroll down through the ads to the video player
+  // Smart Cyclical Ad-Touring Auto-Scroll (Initial entry, then every 60 seconds)
   useEffect(() => {
     let animId: number;
-    let cancelled = false;
+    let isDisposed = false;
 
-    const stopScroll = () => {
-      cancelled = true;
-      if (animId) cancelAnimationFrame(animId);
-    };
-
-    window.addEventListener('touchstart', stopScroll, { passive: true });
-    window.addEventListener('wheel', stopScroll, { passive: true });
-    window.addEventListener('pointerdown', stopScroll, { passive: true });
-
-    // Initial pause of 800ms so user can see the top ad first, then slow glide down
-    const timer = setTimeout(() => {
-      if (cancelled || !videoSectionRef.current) return;
-
-      const targetY = Math.max(0, videoSectionRef.current.offsetTop - 56);
+    // Smooth scroll helper using requestAnimationFrame
+    const smoothScrollTo = (targetY: number, duration: number, callback?: () => void) => {
+      if (isDisposed) return;
       const startY = window.scrollY || window.pageYOffset || 0;
       const distance = targetY - startY;
+      if (Math.abs(distance) < 5) {
+        if (callback && !isDisposed) callback();
+        return;
+      }
 
-      if (distance <= 20) return;
-
-      const duration = 4200; // 4.2 seconds slow, gradual scroll so user sees the ads
       const startTime = performance.now();
-
       const step = (now: number) => {
-        if (cancelled) return;
+        if (isDisposed) return;
         const elapsed = now - startTime;
         const progress = Math.min(1, elapsed / duration);
-
         // Smooth easeInOutQuad easing
         const ease =
           progress < 0.5
@@ -258,21 +284,63 @@ export function VideoWatch() {
 
         if (progress < 1) {
           animId = requestAnimationFrame(step);
+        } else if (callback && !isDisposed) {
+          callback();
         }
       };
-
       animId = requestAnimationFrame(step);
+    };
+
+    const getVideoY = () => {
+      if (!videoSectionRef.current) return 0;
+      return Math.max(0, videoSectionRef.current.offsetTop - 56);
+    };
+
+    const getBottomY = () => {
+      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    };
+
+    // 1. Initial Flow: pause 800ms at top so user sees top ads, then smoothly glide to video player
+    const initialTimer = setTimeout(() => {
+      if (isDisposed) return;
+      smoothScrollTo(getVideoY(), 3800);
     }, 800);
 
+    // 2. Periodic 60-Second Cycle: Tour bottom ads -> top ads -> return to video player
+    const cycleInterval = setInterval(() => {
+      if (isDisposed || !isPageActive || alreadyClaimed) return;
+
+      // Step A: Smoothly scroll down to bottom ads to register impressions
+      smoothScrollTo(getBottomY(), 2800, () => {
+        if (isDisposed) return;
+
+        // Step B: Stay at bottom ads for 4.5 seconds
+        setTimeout(() => {
+          if (isDisposed) return;
+
+          // Step C: Smoothly scroll up to top ads
+          smoothScrollTo(0, 2800, () => {
+            if (isDisposed) return;
+
+            // Step D: Stay at top ads for 3.5 seconds
+            setTimeout(() => {
+              if (isDisposed) return;
+
+              // Step E: Smoothly glide back to the video player to continue watching!
+              smoothScrollTo(getVideoY(), 2600);
+            }, 3500);
+          });
+        }, 4500);
+      });
+    }, 60000); // Triggers every 60 seconds (1 minute)
+
     return () => {
-      clearTimeout(timer);
-      cancelled = true;
+      isDisposed = true;
+      clearTimeout(initialTimer);
+      clearInterval(cycleInterval);
       if (animId) cancelAnimationFrame(animId);
-      window.removeEventListener('touchstart', stopScroll);
-      window.removeEventListener('wheel', stopScroll);
-      window.removeEventListener('pointerdown', stopScroll);
     };
-  }, [videoId]);
+  }, [videoId, alreadyClaimed, isPageActive]);
 
   const canClaim = secondsElapsed >= targetSeconds && !alreadyClaimed && !justClaimed;
   const remainingSeconds = Math.max(0, targetSeconds - secondsElapsed);
@@ -318,23 +386,10 @@ export function VideoWatch() {
       setJustClaimed(true);
       triggerHaptic('success');
       toast.success(`🎉 অভিনন্দন! +$${reward.toFixed(2)} USDT সরাসরি আপনার ব্যালেন্সে যোগ হয়েছে!`, {
-        duration: 4000
+        duration: 5000
       });
-
-      // 3. Find next unwatched video and automatically transition to it
-      const remainingUnwatched = videos.filter(
-        (v) => v.id !== currentVideo.id && !isVideoWatchedByUser(liveUser.telegramId, v.id)
-      );
-
-      setTimeout(() => {
-        if (remainingUnwatched.length > 0) {
-          toast.info('স্বয়ংক্রিয়ভাবে পরবর্তী নতুন ভিডিও লোড হচ্ছে...', { duration: 2500 });
-          navigate(`/video/${remainingUnwatched[0].id}`, { replace: true });
-        } else {
-          toast.success('🎉 অসাধারণ! আপনি সবকটি ভিডিও সফলভাবে শেষ করেছেন!', { duration: 4000 });
-          navigate('/', { replace: true });
-        }
-      }, 1600);
+      // User can freely continue watching this video as long as they want.
+      // Once they click back to exit, this video will not appear on their Home page anymore.
     } catch (err) {
       console.error(err);
       toast.error('রিওয়ার্ড যোগ করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।');
@@ -427,14 +482,7 @@ export function VideoWatch() {
           );
         })()}
 
-        {/* Security Status Badge */}
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 border border-emerald-200/80 shadow-2xs">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            <span>সিকিউরিটি সক্রিয় • ফুল স্ক্রিন ও বহিঃলিংক সম্পূর্ণ নিষ্ক্রিয়</span>
-          </div>
-          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Secure HD Player</span>
-        </div>
+
 
         {/* Video Player Box with Security Shields (Bigger display & Fullscreen strictly disabled) */}
         <div
@@ -445,6 +493,7 @@ export function VideoWatch() {
             {ytId ? (
               <>
                 <iframe
+                  ref={videoIframeRef}
                   src={embedUrl}
                   title={currentVideo.title}
                   className="h-full w-full border-0 select-none"
@@ -535,31 +584,30 @@ export function VideoWatch() {
 
           {alreadyClaimed || justClaimed ? (
             /* Completed / Already Claimed State */
-            <div className="py-3 text-center">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm mb-1.5">
+            <div className="py-2.5 text-center">
+              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm mb-1">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
               <h3 className="text-[13px] font-extrabold text-ink">
-                রিওয়ার্ড সংগ্রহ সফল হয়েছে!
+                ব্যালেন্সে রিওয়ার্ড যোগ হয়ে গেছে! 🎉
               </h3>
               <p className="mt-0.5 text-[11px] text-gray-500">
-                আপনার অ্যাকাউন্টে <b>+${rewardAmount.toFixed(2)} USDT</b> যোগ হয়েছে।
+                আপনার অ্যাকাউন্টে <b>+${rewardAmount.toFixed(2)} USDT</b> যোগ হয়েছে। আপনি চাইলে ভিডিওটি দেখতে পারেন অথবা ব্যাক করতে পারেন।
               </p>
 
-              <div className="mt-3 flex gap-2">
-                {nextUnwatchedVideo ? (
+              <div className="mt-2.5 flex gap-2">
+                <button
+                  onClick={() => navigate('/', { replace: true })}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2 text-[12px] font-extrabold text-gray-700 shadow-xs transition hover:bg-slate-200 active:scale-98 cursor-pointer"
+                >
+                  <ArrowLeft className="h-4 w-4" /> হোমে ফিরুন
+                </button>
+                {nextUnwatchedVideo && (
                   <button
                     onClick={() => navigate(`/video/${nextUnwatchedVideo.id}`, { replace: true })}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-500 py-2.5 text-[12px] font-extrabold text-white shadow-md transition hover:bg-brand-600 active:scale-98 cursor-pointer"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-500 py-2 text-[12px] font-extrabold text-white shadow-md transition hover:bg-brand-600 active:scale-98 cursor-pointer"
                   >
-                    পরবর্তী নতুন ভিডিও দেখুন <ChevronRight className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => navigate('/', { replace: true })}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-500 py-2.5 text-[12px] font-extrabold text-white shadow-md transition hover:bg-brand-600 active:scale-98 cursor-pointer"
-                  >
-                    হোমে ফিরে যান <ArrowLeft className="h-4 w-4" />
+                    পরবর্তী ভিডিও <ChevronRight className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -629,6 +677,9 @@ export function VideoWatch() {
             </div>
           )}
         </div>
+
+        {/* Adsterra Native Banner (strictly on Video Play page) */}
+        <AdsterraNativeBanner />
 
         {/* Bottom Banner Ads (managed in real-time via Firebase / Admin Panel) */}
         {(() => {

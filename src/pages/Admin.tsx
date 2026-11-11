@@ -130,14 +130,16 @@ export function Admin() {
     title: string;
     youtubeUrl: string;
     reward: string;
-    minWatchSeconds: string;
+    watchMinutes: string;
+    watchSeconds: string;
     duration: string;
     order: string;
   }>({
     title: '',
     youtubeUrl: '',
     reward: '0.08',
-    minWatchSeconds: '60',
+    watchMinutes: '1',
+    watchSeconds: '0',
     duration: '15:00',
     order: '1'
   });
@@ -1134,7 +1136,8 @@ export function Admin() {
                     title: '',
                     youtubeUrl: '',
                     reward: '0.08',
-                    minWatchSeconds: '60',
+                    watchMinutes: '1',
+                    watchSeconds: '0',
                     duration: '15:00',
                     order: String(currentLen + 1)
                   });
@@ -1241,20 +1244,55 @@ export function Admin() {
 
                     <div>
                       <label className="mb-1 block text-xs font-bold text-gray-700">
-                        দেখার সময় (সেকেন্ড):
+                        ভিডিও দেখার সময়:
                       </label>
-                      <input
-                        type="number"
-                        placeholder="60"
-                        value={videoFormData.minWatchSeconds}
-                        onChange={(e) =>
-                          setVideoFormData({
-                            ...videoFormData,
-                            minWatchSeconds: e.target.value
-                          })
-                        }
-                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
-                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={videoFormData.watchMinutes}
+                              onChange={(e) =>
+                                setVideoFormData({
+                                  ...videoFormData,
+                                  watchMinutes: e.target.value
+                                })
+                              }
+                              className="w-full rounded-xl border border-black/10 bg-white py-2 pl-3 pr-11 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                            />
+                            <span className="absolute right-2.5 top-2 text-[10.5px] font-bold text-gray-400 pointer-events-none">
+                              মিনিট
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              max="59"
+                              placeholder="0"
+                              value={videoFormData.watchSeconds}
+                              onChange={(e) =>
+                                setVideoFormData({
+                                  ...videoFormData,
+                                  watchSeconds: e.target.value
+                                })
+                              }
+                              className="w-full rounded-xl border border-black/10 bg-white py-2 pl-3 pr-12 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                            />
+                            <span className="absolute right-2.5 top-2 text-[10.5px] font-bold text-gray-400 pointer-events-none">
+                              সেকেন্ড
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[10px] text-gray-500 font-medium">
+                        মোট সময়: {(Math.max(0, parseInt(videoFormData.watchMinutes, 10) || 0) * 60) + Math.max(0, parseInt(videoFormData.watchSeconds, 10) || 0)} সেকেন্ড
+                      </p>
                     </div>
                   </div>
 
@@ -1319,6 +1357,9 @@ export function Admin() {
                         }
 
                         const currentVideos = Array.isArray(cfg.videos) ? [...cfg.videos] : [];
+                        const mins = Math.max(0, parseInt(videoFormData.watchMinutes, 10) || 0);
+                        const secs = Math.max(0, parseInt(videoFormData.watchSeconds, 10) || 0);
+                        const computedWatchSeconds = (mins * 60) + secs || 60;
 
                         if (editingVideo) {
                           const idx = currentVideos.findIndex((v) => v.id === editingVideo.id);
@@ -1328,7 +1369,7 @@ export function Admin() {
                               title: videoFormData.title.trim(),
                               youtubeUrl: videoFormData.youtubeUrl.trim(),
                               reward: r,
-                              minWatchSeconds: Number(videoFormData.minWatchSeconds) || 60,
+                              minWatchSeconds: computedWatchSeconds,
                               duration: videoFormData.duration.trim() || undefined,
                               order: Number(videoFormData.order) || idx + 1
                             };
@@ -1340,7 +1381,7 @@ export function Admin() {
                             title: videoFormData.title.trim(),
                             youtubeUrl: videoFormData.youtubeUrl.trim(),
                             reward: r,
-                            minWatchSeconds: Number(videoFormData.minWatchSeconds) || 60,
+                            minWatchSeconds: computedWatchSeconds,
                             duration: videoFormData.duration.trim() || undefined,
                             order: Number(videoFormData.order) || currentVideos.length + 1,
                             createdAt: new Date().toISOString()
@@ -1408,7 +1449,7 @@ export function Admin() {
                             </span>
                             <span className="text-gray-400">•</span>
                             <span className="text-gray-500 font-medium">
-                              ⏱️ {v.minWatchSeconds || 60}s ওয়াচ
+                              ⏱️ {Math.floor((v.minWatchSeconds || 60) / 60) > 0 ? `${Math.floor((v.minWatchSeconds || 60) / 60)} মিনিট ` : ''}{(v.minWatchSeconds || 60) % 60 > 0 ? `${(v.minWatchSeconds || 60) % 60} সেকেন্ড` : (Math.floor((v.minWatchSeconds || 60) / 60) === 0 ? `${v.minWatchSeconds || 60} সেকেন্ড` : '')} ওয়াচ
                             </span>
                           </div>
                           <p className="truncate text-[10px] text-gray-400 font-mono mt-0.5">
@@ -1430,12 +1471,16 @@ export function Admin() {
                         </a>
                         <button
                           onClick={() => {
+                            const sec = Number(v.minWatchSeconds) || 60;
+                            const mins = Math.floor(sec / 60);
+                            const remSec = sec % 60;
                             setVideoFormData({
                               id: v.id,
                               title: v.title,
                               youtubeUrl: v.youtubeUrl,
                               reward: String(v.reward),
-                              minWatchSeconds: String(v.minWatchSeconds || 60),
+                              watchMinutes: String(mins),
+                              watchSeconds: String(remSec),
                               duration: v.duration || '',
                               order: String(v.order || index + 1)
                             });
