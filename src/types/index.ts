@@ -54,10 +54,12 @@ export interface Withdrawal {
   telegramId: string;
   name: string;
   amount: number;
+  fee?: number;
   method: string;
   account: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Post {
@@ -142,6 +144,35 @@ export interface VideoBannerAdConfig {
   slotKeys?: string[];
 }
 
+export interface TaskPost {
+  id: string;
+  title: string;
+  bannerUrl: string;
+  reward: number; // in USD ($), e.g. 0.50
+  taskUrl: string;
+  steps: string[];
+  requiredScreenshots: number;
+  order?: number;
+  active?: boolean;
+  createdAt?: string;
+}
+
+export interface TaskSubmission {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  taskBannerUrl?: string;
+  telegramId: string;
+  userName: string;
+  reward: number;
+  screenshots: string[];
+  note?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectReason?: string;
+  createdAt: string;
+  reviewedAt?: string;
+}
+
 export interface AppConfig {
   appName: string;
   botUsername: string;
@@ -159,6 +190,7 @@ export interface AppConfig {
   adDailyLimitPerSlot: number;
   adHourlyLimitPerSlot: number;
   tasks: Task[];
+  taskPosts?: TaskPost[];
   videos?: YouTubeVideo[];
   videoBannerAds?: VideoBannerAdConfig;
   referralBonus: number;
@@ -176,6 +208,7 @@ export interface AppDatabase {
   withdrawals: Withdrawal[];
   posts: Post[];
   logs: EarningLog[];
+  taskSubmissions?: TaskSubmission[];
   broadcasts?: BroadcastCampaign[];
   config: AppConfig;
 }

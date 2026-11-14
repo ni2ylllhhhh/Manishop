@@ -10,7 +10,7 @@ import {
   remove,
   DataSnapshot
 } from "firebase/database";
-import type { User, Withdrawal, Referral, AppConfig, BroadcastCampaign } from "../types";
+import type { User, Withdrawal, Referral, AppConfig, BroadcastCampaign, TaskSubmission } from "../types";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDZ5Ae1Y16fk_TsAQ-hc8MXJCmoSB2gbJY",
@@ -434,6 +434,76 @@ export async function deleteBroadcastFromFirebase(id: string): Promise<boolean> 
     return true;
   } catch (err) {
     console.warn("[Firebase RTDB] deleteBroadcastFromFirebase error:", err);
+    return false;
+  }
+}
+
+/**
+ * Save or update a Task Submission (proof screenshot + status) in Firebase RTDB
+ */
+export async function syncTaskSubmissionToFirebase(sub: TaskSubmission): Promise<void> {
+  if (!sub || !sub.id) return;
+  const payload = {
+    ...sub,
+    updatedAt: Date.now()
+  };
+
+  try {
+    fetch(`https://maneishopbd-default-rtdb.firebaseio.com/taskSubmissions/${sub.id}.json`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  } catch {}
+
+  try {
+    const subRef = rtdbRef(rtdb, `taskSubmissions/${sub.id}`);
+    await Promise.race([
+      set(subRef, payload),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Firebase SDK timeout")), 1800))
+    ]).catch(() => {});
+  } catch (err) {
+    console.warn("[Firebase RTDB] syncTaskSubmissionToFirebase error:", err);
+  }
+}
+
+/**
+ * Subscribe in real time to all task submissions
+ */
+export function subscribeAllTaskSubmissions(
+  onSubmissions: (subs: TaskSubmission[]) => void
+): () => void {
+  try {
+    const subsRef = rtdbRef(rtdb, "taskSubmissions");
+    const handler = (snap: DataSnapshot) => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list = Object.values(val) as TaskSubmission[];
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        onSubmissions(list);
+      } else {
+        onSubmissions([]);
+      }
+    };
+    onValue(subsRef, handler);
+    return () => off(subsRef, "value", handler);
+  } catch (err) {
+    console.warn("[Firebase RTDB] subscribeAllTaskSubmissions error:", err);
+    return () => {};
+  }
+}
+
+/**
+ * Delete a task submission from Firebase RTDB
+ */
+export async function deleteTaskSubmissionFromFirebase(id: string): Promise<boolean> {
+  if (!id) return false;
+  try {
+    const subRef = rtdbRef(rtdb, `taskSubmissions/${id}`);
+    await remove(subRef);
+    return true;
+  } catch (err) {
+    console.warn("[Firebase RTDB] deleteTaskSubmissionFromFirebase error:", err);
     return false;
   }
 }

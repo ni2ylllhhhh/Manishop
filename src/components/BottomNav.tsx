@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { Home, Users, ListTodo, Wallet, User as UserIcon } from 'lucide-react';
 import { triggerHaptic } from '../lib/telegram';
+import taskCenterLogo from '../assets/images/task_center_logo.webp';
 
 interface NavItem {
   to: string;
@@ -27,7 +28,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main navigation"
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-14 max-w-md items-stretch border-t border-black/5 bg-white/95 backdrop-blur"
+      className="fixed inset-x-3 bottom-2.5 z-40 mx-auto flex h-14 max-w-[424px] items-stretch rounded-full border border-orange-200/80 bg-gradient-to-r from-[#fff3eb] via-[#fffaf6] to-[#ffedf1] px-2 shadow-[0_8px_24px_-6px_rgba(24,20,12,0.16)]"
     >
       {NAV_ITEMS.map(({ to, label, icon: Icon, center }) => (
         <NavLink
@@ -41,12 +42,18 @@ export function BottomNav() {
             center ? (
               <>
                 <span
-                  className={`-mt-6 flex h-11 w-11 items-center justify-center rounded-full shadow-card transition-transform active:scale-95 ${
-                    isActive ? "bg-brand-500 shadow-md" : "bg-brand-100"
+                  className={`-mt-6 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 bg-black shadow-md transition-transform active:scale-95 ${
+                    isActive
+                      ? "border-brand-600 ring-2 ring-brand-500/35"
+                      : "border-brand-400"
                   }`}
                 >
-                  <Icon
-                    className={`h-5 w-5 ${isActive ? "text-white" : "text-brand-500"}`}
+                  <img
+                    src={taskCenterLogo}
+                    alt={label}
+                    loading="eager"
+                    decoding="sync"
+                    className="h-full w-full scale-[1.06] object-cover"
                   />
                 </span>
                 <span

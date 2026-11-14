@@ -13,23 +13,8 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { updateUserProfile } from '../lib/store';
+import { uploadProofImage } from '../lib/uploadImage';
 import { openTelegramChat, triggerHaptic } from '../lib/telegram';
-
-async function uploadToImgBB(file: File, apiKey: string): Promise<string> {
-  const formData = new FormData();
-  formData.append("image", file);
-
-  const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
-    method: "POST",
-    body: formData
-  });
-
-  if (!res.ok) throw new Error("Image upload failed");
-  const data = await res.json();
-  const url = data?.data?.display_url || data?.data?.url;
-  if (!url) throw new Error("Image URL missing in response");
-  return url;
-}
 
 export function Settings() {
   const { user, config, logout } = useAuth();
@@ -49,7 +34,7 @@ export function Settings() {
     setUploading(true);
     triggerHaptic("light");
     try {
-      const url = await uploadToImgBB(file, config.imgbbApiKey);
+      const url = await uploadProofImage(file, config.imgbbApiKey);
       setPhotoUrl(url);
       toast.success("প্রোফাইল ছবি আপলোড হয়েছে!");
     } catch {

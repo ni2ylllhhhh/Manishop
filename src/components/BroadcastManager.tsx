@@ -24,10 +24,13 @@ import {
   Calendar,
   Key,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  Upload,
+  LoaderCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '../contexts/AuthContext';
+import { uploadProofImage } from '../lib/uploadImage';
 import {
   syncBroadcastToFirebase,
   subscribeAllBroadcasts,
@@ -57,6 +60,7 @@ export function BroadcastManager() {
   const [buttons, setButtons] = useState<BroadcastButton[]>([]);
   const [buttonLayout, setButtonLayout] = useState<'single' | 'double'>('double');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   // Active view tab: 'new' | 'progress' | 'history'
   const [viewTab, setViewTab] = useState<'new' | 'progress' | 'history'>('new');
@@ -509,13 +513,46 @@ export function BroadcastManager() {
                       (ImgBB, Cloudinary, বা সরাসরি https:// লিংক)
                     </span>
                   </label>
-                  <input
-                    type="url"
-                    placeholder="https://example.com/media.jpg"
-                    value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-medium text-ink focus:border-red-500 focus:outline-none"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://example.com/media.jpg"
+                      value={mediaUrl}
+                      onChange={(e) => setMediaUrl(e.target.value)}
+                      className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-medium text-ink focus:border-red-500 focus:outline-none"
+                    />
+                    {messageType === 'photo' && (
+                      <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-[11px] font-bold text-white hover:bg-slate-800 transition">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingMedia}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingMedia(true);
+                            try {
+                              const url = await uploadProofImage(file, db.config.imgbbApiKey);
+                              setMediaUrl(url);
+                              toast.success('ছবি ImgBB-তে হোস্ট হয়েছে!');
+                            } catch {
+                              toast.error('ছবি আপলোড ব্যর্থ হয়েছে');
+                            } finally {
+                              setUploadingMedia(false);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                        {uploadingMedia ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        <span>{uploadingMedia ? 'আপলোড হচ্ছে...' : 'ছবি আপলোড'}</span>
+                      </label>
+                    )}
+                  </div>
                   {mediaUrl && (
                     <div className="mt-2 flex items-center gap-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
                       <span className="text-[11px] font-bold text-slate-500">প্রিভিউ:</span>

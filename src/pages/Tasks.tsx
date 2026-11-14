@@ -1,11 +1,23 @@
 import { motion } from 'motion/react';
-import { CirclePlay, Play, Zap, Globe, LoaderCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  CirclePlay,
+  Play,
+  Zap,
+  Globe,
+  LoaderCircle,
+  History,
+  Coins,
+  CheckCircle2,
+  Clock,
+  Briefcase
+} from 'lucide-react';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
-import { Avatar } from '../components/Avatar';
-import { formatUsd } from '../lib/format';
+import { BrandTopHeader } from '../components/BrandTopHeader';
 import { AdsterraBanner } from '../components/AdsterraBanner';
 
 export function Tasks() {
+  const navigate = useNavigate();
   const {
     user,
     config,
@@ -24,28 +36,19 @@ export function Tasks() {
 
   const totalPossibleThisHour = config.adSlots.length * hourlyLimitPerSlot;
 
+  const taskPosts = (Array.isArray(config.taskPosts) ? [...config.taskPosts] : [])
+    .filter((p) => p.active !== false)
+    .sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
+
+  const userSubmissions = Array.isArray(db.taskSubmissions)
+    ? db.taskSubmissions.filter((s) => s.telegramId === liveUser.telegramId)
+    : [];
+
   return (
-    <main className="px-3 pt-3 pb-8">
-      {/* Top Header Card */}
-      <section className="mb-3 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 shadow-card">
-        <Avatar src={liveUser.photoUrl} name={liveUser.firstName} size={38} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-ink">
-            {liveUser.firstName} {liveUser.lastName}
-          </p>
-          <p className="truncate text-[10px] text-gray-400 font-mono">
-            ID: {liveUser.telegramId}
-          </p>
-        </div>
-        <div className="rounded-xl bg-brand-50 px-2.5 py-1 text-right">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-500">
-            Balance
-          </p>
-          <p className="text-[13px] font-extrabold text-ink">
-            {formatUsd(liveUser.balance)}
-          </p>
-        </div>
-      </section>
+    <main className="pb-8">
+      <BrandTopHeader />
+
+      <div className="px-3 pt-2.5">
 
       {/* Daily Ads Header */}
       <SectionHeading
@@ -155,6 +158,113 @@ export function Tasks() {
         </div>
       </div>
 
+      {/* Special Micro-Task Posts Feed (Right after red mark, matching Reference Screenshots) */}
+      <section className="mt-5">
+        <div className="flex items-center justify-between gap-2 px-0.5 mb-2.5">
+          <div className="flex items-center gap-1.5">
+            <Briefcase className="h-4 w-4 text-indigo-600" />
+            <h2 className="text-[14px] font-extrabold tracking-tight text-ink">
+              Available Tasks
+            </h2>
+            <span className="text-[11px] font-medium text-gray-400">
+              · {taskPosts.length} টি কাজ
+            </span>
+          </div>
+
+          <Link
+            to="/tasks/history"
+            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11.5px] font-bold text-indigo-600 shadow-card border border-black/5 transition hover:bg-indigo-50 active:scale-95"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span>History</span>
+          </Link>
+        </div>
+
+        {taskPosts.length > 0 ? (
+          <div className="space-y-3.5">
+            {taskPosts.map((post) => {
+              const sub = userSubmissions.find((s) => s.taskId === post.id);
+              const isApproved = sub?.status === 'approved';
+              const isPending = sub?.status === 'pending';
+
+              return (
+                <motion.article
+                  key={post.id}
+                  whileTap={{ scale: 0.985 }}
+                  onClick={() => navigate(`/tasks/${post.id}`)}
+                  className="overflow-hidden rounded-2xl bg-white shadow-card transition-shadow hover:shadow-md cursor-pointer"
+                >
+                  {/* Banner Image */}
+                  <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
+                    {post.bannerUrl ? (
+                      <img
+                        src={post.bannerUrl}
+                        alt={post.title}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-600 to-blue-700 p-4 text-center text-white">
+                        <span className="text-[15px] font-extrabold">{post.title}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card Footer Info & Start Task Button */}
+                  <div className="p-3.5">
+                    <h3 className="text-[15px] font-extrabold leading-snug text-ink">
+                      {post.title}
+                    </h3>
+
+                    <div className="mt-2 flex items-center gap-1.5 text-indigo-600">
+                      <Coins className="h-4 w-4 shrink-0" />
+                      <span className="text-[13.5px] font-extrabold tabular-nums">
+                        Reward: ${Number(post.reward || 0).toFixed(2)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/tasks/${post.id}`);
+                      }}
+                      className={`mt-3 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[13.5px] font-extrabold transition active:scale-[0.98] cursor-pointer ${
+                        isApproved
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : isPending
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700'
+                      }`}
+                    >
+                      {isApproved ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4" /> Completed · View Details
+                        </>
+                      ) : isPending ? (
+                        <>
+                          <Clock className="h-4 w-4" /> Pending Review · View
+                        </>
+                      ) : (
+                        <span>Start Task</span>
+                      )}
+                    </button>
+                  </div>
+                </motion.article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-white p-5 text-center shadow-card">
+            <p className="text-[13px] font-bold text-ink">কোনো স্পেশাল টাস্ক নেই</p>
+            <p className="mt-1 text-[11px] text-gray-500">
+              নতুন টাস্ক পোস্ট যোগ হলে এখানে দেখতে পাবেন।
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* Sponsored Ad Banner on Tasks Page */}
       <div className="mt-5 flex flex-col items-center">
         <AdsterraBanner
@@ -162,6 +272,7 @@ export function Tasks() {
           adKey={config.videoBannerAds?.adKey || '911ee250303f0d466e6e2cab58b077e0'}
           scriptHost={config.videoBannerAds?.scriptHost || 'https://bauval.org/22'}
         />
+      </div>
       </div>
     </main>
   );

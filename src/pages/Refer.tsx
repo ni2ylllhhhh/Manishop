@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Copy, Check, Send, Info } from 'lucide-react';
+import { Copy, Check, Send } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppStore } from '../contexts/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { maskUid, formatDate } from '../lib/format';
 import { triggerHaptic, openTelegramChat } from '../lib/telegram';
-
-const BANNER_URL = "https://amazing-fairy-6d0c51.netlify.app/4ccd8c3d-84d2-4e12-a833-285bbc15ab1f.jpg";
+import { BrandTopHeader } from '../components/BrandTopHeader';
+import referInviteBanner from '../assets/images/refer_invite_banner.jpg';
 
 export function Refer() {
   const { user, config } = useAuth();
@@ -66,13 +66,18 @@ export function Refer() {
   const currentList = activeTab === 'l2' ? l2 : l1;
 
   return (
-    <main className="px-3 pt-3">
-      {/* Invite Banner */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+    <main className="pb-6">
+      <BrandTopHeader />
+
+      <div className="px-2.5 pt-2">
+        {/* Invite Banner */}
+        <div className="aspect-[900/502] overflow-hidden rounded-2xl bg-white shadow-card">
         <img
-          src={BANNER_URL}
+          src={referInviteBanner}
           alt="Invite friends"
-          className="w-full object-cover"
+          loading="eager"
+          decoding="sync"
+          className="h-full w-full object-cover"
         />
       </div>
 
@@ -90,27 +95,24 @@ export function Refer() {
 
       {/* Link Sharing Box */}
       <section className="mt-2.5 rounded-2xl bg-white p-3 shadow-card">
-        <div className="mb-2 flex items-center gap-2 border-b border-black/5">
+        <div className="mb-2.5 flex items-center gap-2 border-b border-black/5">
           <span className="border-b-2 border-[#229ED9] pb-1.5 text-[11px] font-extrabold tracking-wide text-[#229ED9]">
-            TELEGRAM LINK
+            INVITE LINK
           </span>
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl bg-blue-50/60 px-2.5 py-2">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
-          <p className="text-[10px] leading-relaxed text-blue-900">
-            আপনার ইউনিক রেফারেল লিংক বন্ধুদের সাথে টেলিগ্রামে শেয়ার করুন এবং প্রতিটি লেভেল থেকে আজীবন কমিশন পান।
-          </p>
-        </div>
-
-        <div className="mt-2 flex items-center gap-2">
-          <div className="min-w-0 flex-1 truncate rounded-xl border border-black/5 bg-cream px-3 py-2 font-mono text-[11px] text-gray-500">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 truncate rounded-xl border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 font-mono text-[11px] font-semibold text-emerald-600">
             {referralLink}
           </div>
           <button
             onClick={handleCopy}
             aria-label="Copy referral link"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white transition active:scale-95"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-xs transition active:scale-95 cursor-pointer ${
+              copied
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                : 'border-orange-200/80 bg-gradient-to-br from-[#fff3eb] via-[#fffaf6] to-[#ffedf1] text-orange-600 hover:border-orange-300'
+            }`}
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
@@ -186,6 +188,7 @@ export function Refer() {
           </ul>
         )}
       </section>
+      </div>
     </main>
   );
 }

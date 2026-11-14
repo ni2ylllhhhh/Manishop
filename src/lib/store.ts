@@ -1,18 +1,21 @@
-import type { AppConfig, AppDatabase, User, Referral, Withdrawal, Post, EarningLog } from '../types';
+import type { AppConfig, AppDatabase, User, Referral, Withdrawal, Post, EarningLog, TaskSubmission } from '../types';
 import {
   syncUserToFirebase,
   updateUserProfileLogin,
   fetchUserFromFirebase,
   syncWithdrawalToFirebase,
-  syncReferralToFirebase
+  syncReferralToFirebase,
+  syncTaskSubmissionToFirebase
 } from './firebase';
+import taskBannerSignup from '../assets/images/task_banner_signup_1794671744750.jpg';
+import taskBannerSocial from '../assets/images/task_banner_social_1794671746187.jpg';
 
 export const defaultConfig: AppConfig = {
   appName: "ManeiShopBD",
   botUsername: "ManeiShopBD_Bot",
   miniAppUrl: "https://manishop.ziniyaapu7.workers.dev/",
   supportUrl: "https://t.me/ManeiShopBD_Site",
-  imgbbApiKey: "f7be34ce0b6f4d15277479fb781d6607",
+  imgbbApiKey: "2b68aa2cef89793027650e5863d2ae34",
   adminPinHash: "48e6f958531e543731746fd0a4fcba173e2ae226d60eb19a5d021be3c29f7a3e",
   allowDemoLogin: true,
   forceChannelVerification: true,
@@ -47,6 +50,40 @@ export const defaultConfig: AppConfig = {
     { id: "t2", title: "Video track 2", url: "https://ads.ziniyaapu7.workers.dev/", reward: 0.05, minSeconds: 60, maxMinutes: 5 },
     { id: "t3", title: "Video tax 3", url: "https://ads.ziniyaapu7.workers.dev/", reward: 0.05, minSeconds: 60, maxMinutes: 5 },
     { id: "t4", title: "Special task 4", url: "https://ads.ziniyaapu7.workers.dev/", reward: 0.05, minSeconds: 60, maxMinutes: 5 }
+  ],
+  taskPosts: [
+    {
+      id: "tp_1",
+      title: "একাউন্ট করুন & অ্যাপ ডাউনলোড টাস্ক",
+      bannerUrl: taskBannerSignup,
+      reward: 0.50,
+      taskUrl: "https://ads.ziniyaapu7.workers.dev/",
+      steps: [
+        'প্রথমে "GO TO TASK LINK" বাটনে ক্লিক করুন।',
+        'একটি নতুন একাউন্ট তৈরি করুন এবং নির্দেশনা অনুযায়ী কাজ সম্পন্ন করুন।',
+        'সবশেষে টাস্ক সম্পন্ন করার প্রমাণ হিসেবে স্ক্রিনশটগুলো সাবমিট করুন।'
+      ],
+      requiredScreenshots: 1,
+      order: 1,
+      active: true,
+      createdAt: "2026-11-14T00:00:00.000Z"
+    },
+    {
+      id: "tp_2",
+      title: "সাইন আপ ও ভেরিফিকেশন স্পেশাল টাস্ক",
+      bannerUrl: taskBannerSocial,
+      reward: 0.35,
+      taskUrl: "https://ads.ziniyaapu7.workers.dev/",
+      steps: [
+        'প্রথমে "GO TO TASK LINK" বাটনে ক্লিক করে লিংকে যান।',
+        'প্রয়োজনীয় তথ্য দিয়ে সাইন আপ ও ভেরিফাই সম্পন্ন করুন।',
+        'কাজ শেষ হওয়ার স্ক্রিনশট নিচে আপলোড করে সাবমিট করুন।'
+      ],
+      requiredScreenshots: 1,
+      order: 2,
+      active: true,
+      createdAt: "2026-11-14T00:00:00.000Z"
+    }
   ],
   videos: [
     {
@@ -145,6 +182,7 @@ const initialDatabase: AppDatabase = {
   withdrawals: [],
   posts: [],
   logs: [],
+  taskSubmissions: [],
   config: defaultConfig
 };
 
@@ -162,11 +200,18 @@ function loadInitialData(): AppDatabase {
     delete (mergedConfig as any).botToken;
     mergedConfig.adminPinHash = mergedConfig.adminPinHash || defaultConfig.adminPinHash;
     delete mergedConfig.adminPassword;
+    if (!mergedConfig.imgbbApiKey || mergedConfig.imgbbApiKey === "f7be34ce0b6f4d15277479fb781d6607") {
+      mergedConfig.imgbbApiKey = defaultConfig.imgbbApiKey;
+    }
     mergedConfig.adMinSeconds = 60;
     mergedConfig.adHourlyLimitPerSlot = 10;
     
     // Ensure all 4 tasks use the requested link
     mergedConfig.tasks = defaultConfig.tasks;
+
+    if (!Array.isArray(mergedConfig.taskPosts)) {
+      mergedConfig.taskPosts = defaultConfig.taskPosts;
+    }
 
     if (!Array.isArray(mergedConfig.videos) || mergedConfig.videos.length === 0) {
       mergedConfig.videos = defaultConfig.videos;
@@ -217,6 +262,10 @@ function loadInitialData(): AppDatabase {
       ? parsed.logs.filter((l: any) => !l.id?.startsWith("log_seed") && !fakeIds.has(l.telegramId))
       : [];
 
+    const cleanedSubmissions = Array.isArray(parsed.taskSubmissions)
+      ? parsed.taskSubmissions.filter((s: any) => s && s.id && !fakeIds.has(s.telegramId))
+      : [];
+
     return {
       ...deepClone(initialDatabase),
       ...parsed,
@@ -224,6 +273,7 @@ function loadInitialData(): AppDatabase {
       referrals: cleanedReferrals,
       withdrawals: cleanedWithdrawals,
       logs: cleanedLogs,
+      taskSubmissions: cleanedSubmissions,
       config: mergedConfig
     };
   } catch {
@@ -1011,15 +1061,18 @@ export async function requestWithdrawal(
       u.binanceId = account.trim();
     }
 
+    const nowIso = new Date().toISOString();
     const wd: Withdrawal = {
       id: generateId("wd"),
       telegramId,
       name: `${u.firstName} ${u.lastName}`.trim(),
       amount,
+      fee: 0,
       method,
       account,
       status: "pending",
-      createdAt: new Date().toISOString()
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
     db.withdrawals.unshift(wd);
@@ -1074,4 +1127,114 @@ export function updateUserProfile(telegramId: string, patch: Partial<User>): voi
   if (u) {
     syncUserToFirebase(u);
   }
+}
+
+export async function submitTaskProof(params: {
+  taskId: string;
+  taskTitle: string;
+  taskBannerUrl?: string;
+  telegramId: string;
+  userName: string;
+  reward: number;
+  screenshots: string[];
+  note?: string;
+}): Promise<{ success: boolean; reason?: string; submission?: TaskSubmission }> {
+  const tid = String(params.telegramId).trim();
+  if (!tid || !params.taskId || !Array.isArray(params.screenshots) || params.screenshots.length === 0) {
+    return { success: false, reason: "missing_data" };
+  }
+
+  let created: TaskSubmission | null = null;
+  let blockedReason: string | undefined;
+
+  appStore.update((db) => {
+    const existingList = Array.isArray(db.taskSubmissions) ? db.taskSubmissions : [];
+    const activeExisting = existingList.find(
+      (s) => s.taskId === params.taskId && s.telegramId === tid && (s.status === "pending" || s.status === "approved")
+    );
+    if (activeExisting) {
+      blockedReason = activeExisting.status === "approved" ? "already_approved" : "already_pending";
+      return;
+    }
+
+    const sub: TaskSubmission = {
+      id: generateId("tsub"),
+      taskId: params.taskId,
+      taskTitle: params.taskTitle,
+      taskBannerUrl: params.taskBannerUrl || "",
+      telegramId: tid,
+      userName: params.userName,
+      reward: Number(params.reward) || 0,
+      screenshots: params.screenshots,
+      note: params.note?.trim() || "",
+      status: "pending",
+      createdAt: new Date().toISOString()
+    };
+
+    db.taskSubmissions = [sub, ...existingList];
+    created = sub;
+  });
+
+  if (blockedReason) {
+    return { success: false, reason: blockedReason };
+  }
+
+  if (created) {
+    await syncTaskSubmissionToFirebase(created);
+    return { success: true, submission: created };
+  }
+
+  return { success: false, reason: "unknown" };
+}
+
+export async function reviewTaskSubmission(
+  submissionId: string,
+  decision: "approved" | "rejected",
+  rejectReason?: string
+): Promise<{ success: boolean }> {
+  let targetSub: TaskSubmission | null = null;
+  let wasPending = false;
+
+  appStore.update((db) => {
+    const list = Array.isArray(db.taskSubmissions) ? db.taskSubmissions : [];
+    const idx = list.findIndex((s) => s.id === submissionId);
+    if (idx === -1) return;
+
+    const current = list[idx];
+    wasPending = current.status === "pending";
+    const updatedSub: TaskSubmission = {
+      ...current,
+      status: decision,
+      rejectReason: decision === "rejected" ? (rejectReason?.trim() || "প্রমাণ সঠিক নয়, পুনরায় সঠিক স্ক্রিনশট দিয়ে চেষ্টা করুন।") : "",
+      reviewedAt: new Date().toISOString()
+    };
+
+    list[idx] = updatedSub;
+    db.taskSubmissions = [...list];
+    targetSub = updatedSub;
+  });
+
+  if (!targetSub) return { success: false };
+  const sub = targetSub as TaskSubmission;
+
+  if (decision === "approved" && wasPending && sub.reward > 0) {
+    await creditUserEarning(
+      sub.telegramId,
+      "task",
+      `টাস্ক সম্পন্ন: ${sub.taskTitle}`,
+      sub.reward
+    );
+    sendTelegramBotMessage(
+      sub.telegramId,
+      `🎉 <b>টাস্ক রিওয়ার্ড অনুমোদিত হয়েছে!</b>\n\n✅ <b>টাস্ক:</b> ${escapeHtml(sub.taskTitle)}\n💵 <b>পুরস্কার:</b> +$${sub.reward.toFixed(2)} USDT\n\nআপনার মূল ব্যালেন্সে টাকা যোগ করা হয়েছে!`
+    ).catch(() => {});
+  } else if (decision === "rejected" && wasPending) {
+    sendTelegramBotMessage(
+      sub.telegramId,
+      `⚠️ <b>টাস্ক সাবমিশন বাতিল হয়েছে</b>\n\n📌 <b>টাস্ক:</b> ${escapeHtml(sub.taskTitle)}\n📝 <b>কারণ:</b> ${escapeHtml(sub.rejectReason || "সঠিক প্রমাণ পাওয়া যায়নি")}\n\nসঠিক স্ক্রিনশট সহ আবার সাবমিট করতে পারবেন।`
+    ).catch(() => {});
+  }
+
+  await syncTaskSubmissionToFirebase(sub);
+  return { success: true };
 }

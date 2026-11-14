@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowLeft,
   Settings as SettingsIcon,
   BadgeCheck,
   User as UserIcon,
@@ -39,14 +40,24 @@ export function Profile() {
       <header className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate("/profile/settings")}
-            aria-label="Settings"
-            className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-card active:scale-95 transition"
+            type="button"
+            onClick={() => navigate("/")}
+            aria-label="Back"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-card active:scale-95 transition cursor-pointer"
           >
-            <SettingsIcon className="h-4 w-4 text-brand-500" />
+            <ArrowLeft className="h-4 w-4 text-ink" />
           </button>
           <h1 className="text-[15px] font-extrabold text-ink">Profile</h1>
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigate("/profile/settings")}
+          aria-label="Settings"
+          className="flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-card active:scale-95 transition cursor-pointer"
+        >
+          <SettingsIcon className="h-4 w-4 text-brand-500" />
+        </button>
       </header>
 
       {/* Main Profile Info Card */}

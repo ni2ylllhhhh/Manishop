@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Play, CheckCircle2 } from 'lucide-react';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
-import { Avatar } from '../components/Avatar';
-import { formatUsd } from '../lib/format';
 import { getYouTubeThumbnail } from '../lib/youtube';
 import { isVideoWatchedByUser } from '../lib/store';
+import { BrandTopHeader } from '../components/BrandTopHeader';
 
 export function Home() {
   const { user, config } = useAuth();
@@ -17,28 +16,11 @@ export function Home() {
   if (!liveUser) return null;
 
   return (
-    <main className="px-3 pt-3 pb-8">
-      {/* User Header Card */}
-      <section className="mb-3 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 shadow-card">
-        <Avatar src={liveUser.photoUrl} name={liveUser.firstName} size={38} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-ink">
-            {liveUser.firstName} {liveUser.lastName}
-          </p>
-          <p className="truncate text-[10px] text-gray-400 font-mono">
-            ID: {liveUser.telegramId}
-          </p>
-        </div>
-        <div className="rounded-xl bg-brand-50 px-2.5 py-1 text-right">
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-500">
-            Balance
-          </p>
-          <p className="text-[13px] font-extrabold text-ink">
-            {formatUsd(liveUser.balance)}
-          </p>
-        </div>
-      </section>
+    <main className="pb-8">
+      {/* Full-bleed Top Header Bar with Brand Logo & Balance */}
+      <BrandTopHeader />
 
+      <div className="px-3 pt-2.5">
       {/* YouTube Videos Section - Only shows unwatched videos */}
       {(() => {
         const allVideos = Array.isArray(config.videos) ? [...config.videos] : [];
@@ -49,7 +31,7 @@ export function Home() {
           : allVideos;
 
         return (
-          <section className="mt-2 mb-4">
+          <section className="mb-4">
             {/* Videos Header */}
             <div className="flex items-center justify-between px-0.5 mb-2.5">
               <h2 className="text-[15px] font-extrabold text-ink tracking-tight">
@@ -133,6 +115,7 @@ export function Home() {
           </section>
         );
       })()}
+      </div>
     </main>
   );
 }

@@ -8,7 +8,8 @@ import {
   syncUserToFirebase,
   subscribeAllReferrals,
   subscribeAllUsers,
-  subscribeAllWithdrawals
+  subscribeAllWithdrawals,
+  subscribeAllTaskSubmissions
 } from '../lib/firebase';
 import {
   initTelegramWebApp,
@@ -244,7 +245,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsub = subscribeConfig((remoteCfg) => {
       if (remoteCfg && typeof remoteCfg === 'object') {
         appStore.update((d) => {
-          d.config = { ...d.config, ...remoteCfg };
+          const nextCfg = { ...d.config, ...remoteCfg };
+          if (!nextCfg.imgbbApiKey || nextCfg.imgbbApiKey === 'f7be34ce0b6f4d15277479fb781d6607') {
+            nextCfg.imgbbApiKey = '2b68aa2cef89793027650e5863d2ae34';
+          }
+          d.config = nextCfg;
         });
       }
     });
@@ -269,6 +274,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(remoteWds)) {
         appStore.update((d) => {
           d.withdrawals = remoteWds;
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Real-time listener for task proof submissions from Firebase RTDB
+  useEffect(() => {
+    const unsub = subscribeAllTaskSubmissions((remoteSubs) => {
+      if (Array.isArray(remoteSubs)) {
+        appStore.update((d) => {
+          d.taskSubmissions = remoteSubs;
         });
       }
     });

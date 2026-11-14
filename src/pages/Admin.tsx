@@ -42,16 +42,19 @@ import {
   subscribeAllUsers,
   subscribeAllWithdrawals,
   subscribeAllReferrals,
+  subscribeAllTaskSubmissions,
   fetchAllUsers,
   deleteUserFromFirebase,
   deleteWithdrawalFromFirebase
 } from '../lib/firebase';
 import { BroadcastManager } from '../components/BroadcastManager';
+import { TaskPostsAdmin } from '../components/TaskPostsAdmin';
 import type { AppConfig, User, Withdrawal, RequiredChannel, YouTubeVideo } from '../types';
 import { extractYouTubeId, getYouTubeThumbnail } from '../lib/youtube';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'task_posts', label: '📝 Task Posts & Proofs' },
   { id: 'broadcast', label: '📢 Broadcast' },
   { id: 'channels', label: '📢 Channels Gate (অন/অফ)' },
   { id: 'users', label: 'Users' },
@@ -226,10 +229,18 @@ export function Admin() {
       });
     });
 
+    // Real-time listener for task proof submissions
+    const unsubSubs = subscribeAllTaskSubmissions((remoteSubs) => {
+      appStore.update((d) => {
+        d.taskSubmissions = remoteSubs || [];
+      });
+    });
+
     return () => {
       unsubUsers();
       unsubWds();
       unsubRefs();
+      unsubSubs();
     };
   }, [unlocked]);
 
@@ -570,7 +581,18 @@ export function Admin() {
             <MetricCard label="Earning Logs" value={String(db.logs.length)} />
             <MetricCard label="Active Ad Slots" value={String(cfg.adSlots.length)} />
             <MetricCard label="Tasks" value={String(cfg.tasks.length)} />
+            <MetricCard label="Task Posts" value={String((cfg.taskPosts || []).length)} />
+            <MetricCard
+              label="Pending Proofs"
+              value={String((db.taskSubmissions || []).filter((s) => s.status === 'pending').length)}
+              tone="text-indigo-600"
+            />
           </div>
+        )}
+
+        {/* TASK POSTS & PROOF SUBMISSIONS */}
+        {activeTab === 'task_posts' && (
+          <TaskPostsAdmin cfg={cfg} updateConfig={updateConfig} />
         )}
 
         {/* BROADCAST */}
@@ -1060,6 +1082,7 @@ export function Admin() {
                               const target = d.withdrawals.find((item) => item.id === w.id);
                               if (target) {
                                 target.status = "approved";
+                                target.updatedAt = new Date().toISOString();
                                 updatedWd = { ...target };
                               }
                             });
@@ -1080,6 +1103,7 @@ export function Admin() {
                               const target = d.withdrawals.find((item) => item.id === w.id);
                               if (target) {
                                 target.status = "rejected";
+                                target.updatedAt = new Date().toISOString();
                                 const u = d.users[target.telegramId];
                                 if (u) {
                                   u.balance += target.amount;
@@ -2314,8 +2338,12 @@ export function Admin() {
                     appStore.update((d) => {
                       const idx = d.withdrawals.findIndex((item) => item.id === editingWd.id);
                       if (idx !== -1) {
-                        d.withdrawals[idx] = { ...editingWd };
-                        savedWd = { ...editingWd };
+                        const updatedRecord: Withdrawal = {
+                          ...editingWd,
+                          updatedAt: new Date().toISOString()
+                        };
+                        d.withdrawals[idx] = updatedRecord;
+                        savedWd = updatedRecord;
                       }
                     });
                     if (savedWd) syncWithdrawalToFirebase(savedWd);
