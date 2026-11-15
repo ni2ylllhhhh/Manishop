@@ -1149,11 +1149,22 @@ export async function submitTaskProof(params: {
 
   appStore.update((db) => {
     const existingList = Array.isArray(db.taskSubmissions) ? db.taskSubmissions : [];
-    const activeExisting = existingList.find(
-      (s) => s.taskId === params.taskId && s.telegramId === tid && (s.status === "pending" || s.status === "approved")
+    const posts = Array.isArray(db.config?.taskPosts) ? db.config.taskPosts : [];
+    const postConfig = posts.find((p) => p.id === params.taskId);
+    const maxLimit = Math.max(1, Math.floor(Number(postConfig?.maxCompletions) || 1));
+
+    const userPostSubs = existingList.filter(
+      (s) => s.taskId === params.taskId && s.telegramId === tid
     );
-    if (activeExisting) {
-      blockedReason = activeExisting.status === "approved" ? "already_approved" : "already_pending";
+
+    if (userPostSubs.some((s) => s.status === "pending")) {
+      blockedReason = "already_pending";
+      return;
+    }
+
+    const approvedCount = userPostSubs.filter((s) => s.status === "approved").length;
+    if (approvedCount >= maxLimit) {
+      blockedReason = "already_approved";
       return;
     }
 

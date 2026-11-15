@@ -49,6 +49,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
     stepsText:
       'প্রথমে "GO TO TASK LINK" বাটনে ক্লিক করুন।\nএকটি নতুন একাউন্ট তৈরি করুন এবং কাজ সম্পন্ন করুন।\nসবশেষে প্রমাণ হিসেবে স্ক্রিনশট সাবমিট করুন।',
     requiredScreenshots: '1',
+    maxCompletions: '1',
     order: '1',
     active: true
   });
@@ -83,6 +84,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
       stepsText:
         'প্রথমে "GO TO TASK LINK" বাটনে ক্লিক করুন।\nনির্দেশনা অনুযায়ী একাউন্ট তৈরি ও কাজ সম্পন্ন করুন।\nসবশেষে প্রমাণ হিসেবে স্ক্রিনশট সাবমিট করুন।',
       requiredScreenshots: '1',
+      maxCompletions: '1',
       order: String(taskPosts.length + 1),
       active: true
     });
@@ -98,6 +100,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
       taskUrl: post.taskUrl,
       stepsText: (Array.isArray(post.steps) ? post.steps : []).join('\n'),
       requiredScreenshots: String(post.requiredScreenshots || 1),
+      maxCompletions: String(Math.max(1, Number(post.maxCompletions) || 1)),
       order: String(post.order || 1),
       active: post.active !== false
     });
@@ -139,6 +142,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
       .filter(Boolean);
 
     const reqShots = Math.max(1, Math.min(3, parseInt(form.requiredScreenshots, 10) || 1));
+    const maxCompletions = Math.max(1, parseInt(form.maxCompletions, 10) || 1);
     const current = Array.isArray(cfg.taskPosts) ? [...cfg.taskPosts] : [];
 
     if (editingPost) {
@@ -152,6 +156,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
           taskUrl: form.taskUrl.trim(),
           steps,
           requiredScreenshots: reqShots,
+          maxCompletions,
           order: Number(form.order) || idx + 1,
           active: form.active
         };
@@ -166,6 +171,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
         taskUrl: form.taskUrl.trim(),
         steps,
         requiredScreenshots: reqShots,
+        maxCompletions,
         order: Number(form.order) || current.length + 1,
         active: form.active,
         createdAt: new Date().toISOString()
@@ -497,7 +503,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700">
                     রিওয়ার্ড ($ USD) *
@@ -526,6 +532,19 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700">
+                    কাজের লিমিট (প্রতি ইউজার)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={form.maxCompletions}
+                    onChange={(e) => setForm({ ...form, maxCompletions: e.target.value })}
+                    className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-indigo-600 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">
                     সিরিয়াল (Order)
                   </label>
                   <input
@@ -536,6 +555,9 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
                   />
                 </div>
               </div>
+              <p className="text-[11px] text-slate-500">
+                লিমিট <b>1</b> হলে ১ বার অ্যাপ্রুভের পর টাস্ক আর আসবে না; <b>2</b> বা <b>3</b> দিলে ইউজার অ্যাপ্রুভ হওয়া সাপেক্ষে ২-৩ বার কাজটি করতে পারবে।
+              </p>
 
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700">
@@ -629,7 +651,7 @@ export function TaskPostsAdmin({ cfg, updateConfig }: Props) {
                           #{post.order || 1} · {post.title}
                         </p>
                         <p className="mt-0.5 text-[11px] font-bold text-emerald-600">
-                          Reward: ${Number(post.reward).toFixed(2)} · {post.requiredScreenshots || 1} Screenshot(s) ·{' '}
+                          Reward: ${Number(post.reward).toFixed(2)} · {post.requiredScreenshots || 1} Screenshot(s) · Limit: {Math.max(1, Number(post.maxCompletions) || 1)}x/user ·{' '}
                           <span className={post.active === false ? 'text-rose-500' : 'text-indigo-600'}>
                             {post.active === false ? 'Hidden' : 'Active'}
                           </span>

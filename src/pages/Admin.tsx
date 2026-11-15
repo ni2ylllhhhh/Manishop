@@ -50,7 +50,7 @@ import {
 import { BroadcastManager } from '../components/BroadcastManager';
 import { TaskPostsAdmin } from '../components/TaskPostsAdmin';
 import type { AppConfig, User, Withdrawal, RequiredChannel, YouTubeVideo } from '../types';
-import { extractYouTubeId, getYouTubeThumbnail } from '../lib/youtube';
+import { extractYouTubeId, getYouTubeThumbnail, sortVideosNewestFirst } from '../lib/youtube';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Overview' },
@@ -136,15 +136,13 @@ export function Admin() {
     watchMinutes: string;
     watchSeconds: string;
     duration: string;
-    order: string;
   }>({
     title: '',
     youtubeUrl: '',
     reward: '0.08',
     watchMinutes: '1',
     watchSeconds: '0',
-    duration: '15:00',
-    order: '1'
+    duration: '15:00'
   });
 
   const [adBannerForm, setAdBannerForm] = useState({
@@ -1155,15 +1153,13 @@ export function Admin() {
             action={
               <button
                 onClick={() => {
-                  const currentLen = (cfg.videos || []).length;
                   setVideoFormData({
                     title: '',
                     youtubeUrl: '',
                     reward: '0.08',
                     watchMinutes: '1',
                     watchSeconds: '0',
-                    duration: '15:00',
-                    order: String(currentLen + 1)
+                    duration: '15:00'
                   });
                   setEditingVideo(null);
                   setIsAddingVideo(true);
@@ -1320,36 +1316,19 @@ export function Admin() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-bold text-gray-700">
-                        ভিডিওর দৈর্ঘ্য (Duration Badge - ঐচ্ছিক):
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="যেমন: 22:02 বা 15:45"
-                        value={videoFormData.duration}
-                        onChange={(e) =>
-                          setVideoFormData({ ...videoFormData, duration: e.target.value })
-                        }
-                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-medium text-ink shadow-xs focus:border-brand-500 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-xs font-bold text-gray-700">
-                        সিরিয়াল নম্বর (Order Sequence):
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="1"
-                        value={videoFormData.order}
-                        onChange={(e) =>
-                          setVideoFormData({ ...videoFormData, order: e.target.value })
-                        }
-                        className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-ink shadow-xs focus:border-brand-500 focus:outline-none"
-                      />
-                    </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      ভিডিওর দৈর্ঘ্য (Duration Badge - ঐচ্ছিক):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="যেমন: 22:02 বা 15:45"
+                      value={videoFormData.duration}
+                      onChange={(e) =>
+                        setVideoFormData({ ...videoFormData, duration: e.target.value })
+                      }
+                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-medium text-ink shadow-xs focus:border-brand-500 focus:outline-none"
+                    />
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">
@@ -1394,8 +1373,7 @@ export function Admin() {
                               youtubeUrl: videoFormData.youtubeUrl.trim(),
                               reward: r,
                               minWatchSeconds: computedWatchSeconds,
-                              duration: videoFormData.duration.trim() || undefined,
-                              order: Number(videoFormData.order) || idx + 1
+                              duration: videoFormData.duration.trim() || undefined
                             };
                           }
                           toast.success('ভিডিও তথ্য সফলভাবে আপডেট হয়েছে!');
@@ -1407,16 +1385,15 @@ export function Admin() {
                             reward: r,
                             minWatchSeconds: computedWatchSeconds,
                             duration: videoFormData.duration.trim() || undefined,
-                            order: Number(videoFormData.order) || currentVideos.length + 1,
                             createdAt: new Date().toISOString()
                           };
-                          currentVideos.push(newV);
+                          currentVideos.unshift(newV);
                           toast.success('নতুন ভিডিও সফলভাবে যোগ ও লাইভ করা হয়েছে!');
                         }
 
-                        currentVideos.sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
+                        const sortedVideos = sortVideosNewestFirst(currentVideos);
 
-                        updateConfig({ videos: currentVideos });
+                        updateConfig({ videos: sortedVideos });
                         setIsAddingVideo(false);
                         setEditingVideo(null);
                       }}
@@ -1432,8 +1409,7 @@ export function Admin() {
 
             {/* List of YouTube Videos */}
             <div className="space-y-2.5">
-              {(Array.isArray(cfg.videos) ? [...cfg.videos] : [])
-                .sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99))
+              {sortVideosNewestFirst(Array.isArray(cfg.videos) ? cfg.videos : [])
                 .map((v, index) => {
                   const thumb = getYouTubeThumbnail(v.youtubeUrl);
 
@@ -1455,7 +1431,7 @@ export function Admin() {
                             }}
                           />
                           <span className="absolute top-1 left-1 rounded bg-black/80 px-1 py-0.5 text-[9px] font-bold text-white">
-                            #{v.order || index + 1}
+                            #{index + 1}
                           </span>
                           {v.duration && (
                             <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.5 text-[8.5px] font-bold text-white">
@@ -1505,8 +1481,7 @@ export function Admin() {
                               reward: String(v.reward),
                               watchMinutes: String(mins),
                               watchSeconds: String(remSec),
-                              duration: v.duration || '',
-                              order: String(v.order || index + 1)
+                              duration: v.duration || ''
                             });
                             setEditingVideo(v);
                             setIsAddingVideo(false);

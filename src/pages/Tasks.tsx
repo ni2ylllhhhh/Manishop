@@ -8,8 +8,6 @@ import {
   LoaderCircle,
   History,
   Coins,
-  CheckCircle2,
-  Clock,
   Briefcase
 } from 'lucide-react';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
@@ -43,6 +41,19 @@ export function Tasks() {
   const userSubmissions = Array.isArray(db.taskSubmissions)
     ? db.taskSubmissions.filter((s) => s.telegramId === liveUser.telegramId)
     : [];
+
+  const visibleTaskPosts = taskPosts
+    .map((post) => {
+      const subs = userSubmissions
+        .filter((s) => s.taskId === post.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const hasPending = subs.some((s) => s.status === 'pending');
+      const approvedCount = subs.filter((s) => s.status === 'approved').length;
+      const maxLimit = Math.max(1, Math.floor(Number(post.maxCompletions) || 1));
+      const latestRejected = subs[0]?.status === 'rejected' ? subs[0] : null;
+      return { post, hasPending, approvedCount, maxLimit, latestRejected };
+    })
+    .filter(({ hasPending, approvedCount, maxLimit }) => !hasPending && approvedCount < maxLimit);
 
   return (
     <main className="pb-8">
@@ -167,7 +178,7 @@ export function Tasks() {
               Available Tasks
             </h2>
             <span className="text-[11px] font-medium text-gray-400">
-              · {taskPosts.length} টি কাজ
+              · {visibleTaskPosts.length} টি কাজ
             </span>
           </div>
 
@@ -180,13 +191,9 @@ export function Tasks() {
           </Link>
         </div>
 
-        {taskPosts.length > 0 ? (
+        {visibleTaskPosts.length > 0 ? (
           <div className="space-y-3.5">
-            {taskPosts.map((post) => {
-              const sub = userSubmissions.find((s) => s.taskId === post.id);
-              const isApproved = sub?.status === 'approved';
-              const isPending = sub?.status === 'pending';
-
+            {visibleTaskPosts.map(({ post, approvedCount, maxLimit, latestRejected }) => {
               return (
                 <motion.article
                   key={post.id}
@@ -217,12 +224,26 @@ export function Tasks() {
                       {post.title}
                     </h3>
 
-                    <div className="mt-2 flex items-center gap-1.5 text-indigo-600">
-                      <Coins className="h-4 w-4 shrink-0" />
-                      <span className="text-[13.5px] font-extrabold tabular-nums">
-                        Reward: ${Number(post.reward || 0).toFixed(2)}
-                      </span>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-indigo-600">
+                        <Coins className="h-4 w-4 shrink-0" />
+                        <span className="text-[13.5px] font-extrabold tabular-nums">
+                          Reward: ${Number(post.reward || 0).toFixed(2)}
+                        </span>
+                      </div>
+
+                      {maxLimit > 1 && (
+                        <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-600 tabular-nums">
+                          {approvedCount}/{maxLimit} বার সম্পন্ন
+                        </span>
+                      )}
                     </div>
+
+                    {latestRejected && (
+                      <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700">
+                        আগের প্রমাণ বাতিল হয়েছে — আবার সঠিক স্ক্রিনশট দিয়ে সাবমিট করুন
+                      </p>
+                    )}
 
                     <button
                       type="button"
@@ -230,30 +251,30 @@ export function Tasks() {
                         e.stopPropagation();
                         navigate(`/tasks/${post.id}`);
                       }}
-                      className={`mt-3 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[13.5px] font-extrabold transition active:scale-[0.98] cursor-pointer ${
-                        isApproved
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : isPending
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                          : 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700'
-                      }`}
+                      className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-[13.5px] font-extrabold text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.98] cursor-pointer"
                     >
-                      {isApproved ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4" /> Completed · View Details
-                        </>
-                      ) : isPending ? (
-                        <>
-                          <Clock className="h-4 w-4" /> Pending Review · View
-                        </>
-                      ) : (
-                        <span>Start Task</span>
-                      )}
+                      <span>{latestRejected ? 'Try Again' : 'Start Task'}</span>
                     </button>
                   </div>
                 </motion.article>
               );
             })}
+          </div>
+        ) : taskPosts.length > 0 ? (
+          <div className="rounded-2xl bg-white p-5 text-center shadow-card">
+            <p className="text-[13px] font-extrabold text-ink">
+              সবগুলো টাস্ক সম্পন্ন বা পেন্ডিং রয়েছে!
+            </p>
+            <p className="mt-1 text-[11px] text-gray-500">
+              আপনার জমা দেওয়া কাজের স্ট্যাটাস History থেকে দেখতে পারবেন।
+            </p>
+            <Link
+              to="/tasks/history"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-4 py-2 text-[12px] font-bold text-indigo-600 hover:bg-indigo-100"
+            >
+              <History className="h-3.5 w-3.5" />
+              <span>History দেখুন</span>
+            </Link>
           </div>
         ) : (
           <div className="rounded-2xl bg-white p-5 text-center shadow-card">

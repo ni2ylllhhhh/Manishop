@@ -152,6 +152,7 @@ export interface TaskPost {
   taskUrl: string;
   steps: string[];
   requiredScreenshots: number;
+  maxCompletions?: number; // how many times a user can complete this task (default 1)
   order?: number;
   active?: boolean;
   createdAt?: string;

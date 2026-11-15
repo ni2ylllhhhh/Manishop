@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Play, CheckCircle2 } from 'lucide-react';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
-import { getYouTubeThumbnail } from '../lib/youtube';
+import { getYouTubeThumbnail, sortVideosNewestFirst } from '../lib/youtube';
 import { isVideoWatchedByUser } from '../lib/store';
 import { BrandTopHeader } from '../components/BrandTopHeader';
 
@@ -23,8 +23,7 @@ export function Home() {
       <div className="px-3 pt-2.5">
       {/* YouTube Videos Section - Only shows unwatched videos */}
       {(() => {
-        const allVideos = Array.isArray(config.videos) ? [...config.videos] : [];
-        allVideos.sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
+        const allVideos = sortVideosNewestFirst(Array.isArray(config.videos) ? config.videos : []);
 
         const unwatchedVideos = liveUser
           ? allVideos.filter((v) => !isVideoWatchedByUser(liveUser.telegramId, v.id))

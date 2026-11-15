@@ -1,3 +1,5 @@
+import type { YouTubeVideo } from '../types';
+
 /**
  * Helper utilities for YouTube video URLs, IDs, thumbnails, and embedding
  */
@@ -54,4 +56,27 @@ export function getYouTubeEmbedUrl(url: string, autoplay = true): string {
     params.set('origin', origin);
   }
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+}
+
+function getVideoTimestamp(v: YouTubeVideo): number {
+  if (v.createdAt) {
+    const parsed = Date.parse(v.createdAt);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  if (v.id && v.id.startsWith('vid_')) {
+    const parts = v.id.split('_');
+    if (parts[1]) {
+      const ts = parseInt(parts[1], 36);
+      if (!Number.isNaN(ts) && ts > 1_600_000_000_000) return ts;
+    }
+  }
+  return 0;
+}
+
+export function sortVideosNewestFirst(videos: YouTubeVideo[]): YouTubeVideo[] {
+  return [...videos].sort((a, b) => {
+    const tsDiff = getVideoTimestamp(b) - getVideoTimestamp(a);
+    if (tsDiff !== 0) return tsDiff;
+    return (Number(a.order) || 999) - (Number(b.order) || 999);
+  });
 }

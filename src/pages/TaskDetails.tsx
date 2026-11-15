@@ -33,13 +33,29 @@ export function TaskDetails() {
     return posts.find((p) => p.id === taskId) || null;
   }, [config.taskPosts, taskId]);
 
-  const existingSubmission = useMemo(() => {
-    if (!liveUser || !taskPost) return null;
-    const subs = Array.isArray(db.taskSubmissions) ? db.taskSubmissions : [];
-    return (
-      subs.find((s) => s.taskId === taskPost.id && s.telegramId === liveUser.telegramId) || null
-    );
-  }, [db.taskSubmissions, liveUser, taskPost]);
+  const maxLimit = Math.max(1, Math.floor(Number(taskPost?.maxCompletions) || 1));
+
+  const { pendingSub, approvedCount, existingSubmission } = useMemo(() => {
+    if (!liveUser || !taskPost) {
+      return { pendingSub: null, approvedCount: 0, existingSubmission: null };
+    }
+    const subs = (Array.isArray(db.taskSubmissions) ? db.taskSubmissions : [])
+      .filter((s) => s.taskId === taskPost.id && s.telegramId === liveUser.telegramId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const pendingItem = subs.find((s) => s.status === 'pending') || null;
+    const approvedTotal = subs.filter((s) => s.status === 'approved').length;
+    const displaySub =
+      pendingItem ||
+      (approvedTotal >= maxLimit ? subs.find((s) => s.status === 'approved') || null : null) ||
+      (subs[0]?.status === 'rejected' ? subs[0] : null);
+
+    return {
+      pendingSub: pendingItem,
+      approvedCount: approvedTotal,
+      existingSubmission: displaySub
+    };
+  }, [db.taskSubmissions, liveUser, taskPost, maxLimit]);
 
   const requiredCount = Math.max(1, Math.min(3, Number(taskPost?.requiredScreenshots || 1)));
 
@@ -50,7 +66,6 @@ export function TaskDetails() {
     Array.from({ length: 3 }, () => '')
   );
   const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
-  const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [bannerFailed, setBannerFailed] = useState(false);
 
@@ -150,8 +165,7 @@ export function TaskDetails() {
         telegramId: liveUser.telegramId,
         userName: `${liveUser.firstName} ${liveUser.lastName}`.trim() || liveUser.username || liveUser.telegramId,
         reward: Number(taskPost.reward) || 0,
-        screenshots: selected,
-        note
+        screenshots: selected
       });
 
       if (!res.success) {
@@ -171,7 +185,7 @@ export function TaskDetails() {
       });
       setScreenshots(Array.from({ length: 3 }, () => null));
       setFileNames(Array.from({ length: 3 }, () => ''));
-      setNote('');
+      navigate('/tasks', { replace: true });
     } catch {
       toast.error('সাবমিট ব্যর্থ হয়েছে, আবার চেষ্টা করুন।');
     } finally {
@@ -179,8 +193,7 @@ export function TaskDetails() {
     }
   };
 
-  const canSubmitForm =
-    !existingSubmission || existingSubmission.status === 'rejected';
+  const canSubmitForm = !pendingSub && approvedCount < maxLimit;
 
   return (
     <main className="px-3 pt-3 pb-10 space-y-3.5">
@@ -235,11 +248,19 @@ export function TaskDetails() {
             {taskPost.title}
           </h2>
 
-          <div className="mt-2.5 flex items-center gap-2 text-indigo-600">
-            <Gift className="h-5 w-5 shrink-0 text-indigo-600" />
-            <span className="text-[15px] font-extrabold tabular-nums">
-              Reward: ${Number(taskPost.reward || 0).toFixed(2)}
-            </span>
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-indigo-600">
+              <Gift className="h-5 w-5 shrink-0 text-indigo-600" />
+              <span className="text-[15px] font-extrabold tabular-nums">
+                Reward: ${Number(taskPost.reward || 0).toFixed(2)}
+              </span>
+            </div>
+
+            {maxLimit > 1 && (
+              <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11.5px] font-bold text-indigo-600 tabular-nums">
+                সম্পন্ন: {approvedCount}/{maxLimit} বার
+              </span>
+            )}
           </div>
 
           <hr className="my-3.5 border-slate-100" />
@@ -271,13 +292,13 @@ export function TaskDetails() {
         </div>
       </section>
 
-      {/* Primary GO TO TASK LINK Button matching Screenshots 1 & 2 */}
+      {/* Compact GO TO TASK LINK Button (smaller than Submit button) */}
       <button
         type="button"
         onClick={handleOpenTaskLink}
-        className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3.5 text-[14px] font-extrabold tracking-wide text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 active:scale-[0.98] cursor-pointer"
+        className="mx-auto flex h-10 w-fit min-w-[205px] items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 text-[12.5px] font-extrabold tracking-wide text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 active:scale-[0.98] cursor-pointer"
       >
-        <ExternalLink className="h-4.5 w-4.5" />
+        <ExternalLink className="h-3.5 w-3.5" />
         <span>GO TO TASK LINK</span>
       </button>
 
@@ -427,19 +448,6 @@ export function TaskDetails() {
                 </div>
               );
             })}
-
-            <div>
-              <label className="mb-1 block text-[12px] font-semibold text-slate-600">
-                ইউজারনেম / অতিরিক্ত তথ্য (ঐচ্ছিক)
-              </label>
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="যেমন: একাউন্টের নাম বা ইমেইল..."
-                className="min-h-[42px] w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 text-[13px] text-ink outline-none focus:border-indigo-500 focus:bg-white transition"
-              />
-            </div>
 
             <button
               type="submit"
