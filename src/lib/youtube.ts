@@ -50,7 +50,7 @@ export function getYouTubeEmbedUrl(url: string, autoplay = true): string {
     fs: '0',
     disablekb: '1',
     controls: '1',
-    vq: 'medium'
+    vq: 'small'
   });
   if (origin) {
     params.set('origin', origin);

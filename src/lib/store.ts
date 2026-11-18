@@ -930,20 +930,6 @@ export async function creditUserEarning(
         })
       });
     } catch {}
-
-    // 3. Backend API credit endpoint (background notification)
-    try {
-      fetch("/api/user/credit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          telegramId: tid,
-          kind,
-          label,
-          amount: cleanAmount
-        })
-      }).catch((e) => console.warn("[Credit server API error]:", e));
-    } catch {}
   }
 
   return updated;

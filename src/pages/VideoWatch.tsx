@@ -172,18 +172,18 @@ export function VideoWatch() {
     };
   }, []);
 
-  // Strictly enforce 360p (medium) video playback quality
+  // Enforce 240p (small) video playback quality
   useEffect(() => {
     const iframe = videoIframeRef.current;
     if (!iframe) return;
 
-    const enforce360p = () => {
+    const enforce240p = () => {
       try {
         iframe.contentWindow?.postMessage(
           JSON.stringify({
             event: 'command',
             func: 'setPlaybackQuality',
-            args: ['medium']
+            args: ['small']
           }),
           '*'
         );
@@ -191,18 +191,20 @@ export function VideoWatch() {
           JSON.stringify({
             event: 'command',
             func: 'setPlaybackQualityRange',
-            args: ['medium', 'medium']
+            args: ['small', 'small']
           }),
           '*'
         );
       } catch {}
     };
 
-    const t1 = setTimeout(enforce360p, 1000);
-    const t2 = setTimeout(enforce360p, 2500);
-    const t3 = setTimeout(enforce360p, 5000);
+    iframe.addEventListener('load', enforce240p);
+    const t1 = setTimeout(enforce240p, 800);
+    const t2 = setTimeout(enforce240p, 2000);
+    const t3 = setTimeout(enforce240p, 4500);
 
     return () => {
+      iframe.removeEventListener('load', enforce240p);
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
@@ -491,7 +493,15 @@ export function VideoWatch() {
 
   // Automatically credit reward as soon as user completes the watch timer on page
   useEffect(() => {
-    if (secondsElapsed >= targetSeconds && !alreadyClaimed && !justClaimed && !isClaiming && liveUser && currentVideo) {
+    if (
+      secondsElapsed >= targetSeconds &&
+      !alreadyClaimed &&
+      !justClaimed &&
+      !isClaiming &&
+      liveUser &&
+      currentVideo &&
+      claimedInThisSessionRef.current !== currentVideo.id
+    ) {
       handleClaimReward();
     }
   }, [secondsElapsed, targetSeconds, alreadyClaimed, justClaimed, isClaiming, liveUser, currentVideo]);
