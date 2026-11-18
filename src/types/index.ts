@@ -58,6 +58,7 @@ export interface Withdrawal {
   method: string;
   account: string;
   status: 'pending' | 'approved' | 'rejected';
+  referralCountAtRequest?: number;
   createdAt: string;
   updatedAt?: string;
 }

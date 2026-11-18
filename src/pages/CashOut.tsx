@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Check, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../contexts/AuthContext';
-import { requestWithdrawal } from '../lib/store';
+import { useAuth, useAppStore } from '../contexts/AuthContext';
+import { getWithdrawReferralStatus, requestWithdrawal } from '../lib/store';
 import { triggerHaptic } from '../lib/telegram';
 
 type PaymentMethodType = 'bKash' | 'Nagad' | 'Binance';
@@ -50,6 +50,7 @@ const REASON_MESSAGES: Record<string, string> = {
 
 export function CashOut() {
   const { user, config } = useAuth();
+  const db = useAppStore();
   const navigate = useNavigate();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('bKash');
@@ -58,15 +59,18 @@ export function CashOut() {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const accountInputRef = useRef<HTMLInputElement | null>(null);
 
-  if (!user) return null;
+  const liveUser = (user?.telegramId && db.users[user.telegramId]) ? db.users[user.telegramId] : user;
+
+  if (!liveUser) return null;
 
   const currentMethod = METHODS.find((m) => m.id === selectedMethod) || METHODS[0];
   const cleanAccount = accountNumber.trim();
   const normalizedMobile = cleanAccount.replace(/[\s-]/g, '');
   const isMobileMethod = selectedMethod === 'bKash' || selectedMethod === 'Nagad';
 
-  const hasEnoughBalance = user.balance >= selectedAmount;
-  const hasEnoughReferrals = user.referralCount >= config.minReferralsForWithdraw;
+  const refStatus = getWithdrawReferralStatus(liveUser, db.withdrawals, config);
+  const hasEnoughBalance = liveUser.balance >= selectedAmount;
+  const hasEnoughReferrals = refStatus.met;
   const isValidAccount = isMobileMethod ? /^01\d{9}$/.test(normalizedMobile) : cleanAccount.length >= 4;
 
   const accountRequirementText =
@@ -76,16 +80,18 @@ export function CashOut() {
         ? 'সঠিক নগদ নাম্বার প্রদান করুন (১১ ডিজিট)'
         : 'সঠিক Binance ID / Address প্রদান করুন';
 
+  const referralRequirementLabel = `নূন্যতম ${refStatus.required} জন রেফার প্রয়োজন (আপনার রেফার: ${refStatus.current}/${refStatus.required} জন)`;
+
   const requirements = [
     {
       id: 'balance',
       met: hasEnoughBalance,
-      label: `সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT (আপনার ব্যালেন্স $${user.balance.toFixed(2)})`
+      label: `সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT (আপনার ব্যালেন্স $${liveUser.balance.toFixed(2)})`
     },
     {
       id: 'referrals',
       met: hasEnoughReferrals,
-      label: `নূন্যতম ${config.minReferralsForWithdraw} জন রেফার প্রয়োজন (আপনার রেফার: ${user.referralCount}/${config.minReferralsForWithdraw} জন)`
+      label: referralRequirementLabel
     },
     {
       id: 'account',
@@ -101,10 +107,10 @@ export function CashOut() {
 
     const missingMessages: string[] = [];
     if (!hasEnoughBalance) {
-      missingMessages.push(`সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT ব্যালেন্স প্রয়োজন (আপনার ব্যালেন্স $${user.balance.toFixed(2)})`);
+      missingMessages.push(`সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT ব্যালেন্স প্রয়োজন (আপনার ব্যালেন্স $${liveUser.balance.toFixed(2)})`);
     }
     if (!hasEnoughReferrals) {
-      missingMessages.push(`নূন্যতম ${config.minReferralsForWithdraw} জন রেফার প্রয়োজন (আপনার রেফার: ${user.referralCount}/${config.minReferralsForWithdraw} জন)`);
+      missingMessages.push(referralRequirementLabel);
     }
     if (!isValidAccount) {
       missingMessages.push(accountRequirementText);
@@ -136,7 +142,7 @@ export function CashOut() {
 
     try {
       const res = await requestWithdrawal(
-        user.telegramId,
+        liveUser.telegramId,
         selectedAmount,
         accountNumber.trim(),
         selectedMethod === 'Binance' ? 'Binance (USDT BEP20)' : selectedMethod
@@ -176,7 +182,7 @@ export function CashOut() {
           <h1 className="text-[15px] font-extrabold text-ink">Cash Out</h1>
         </div>
         <span className="rounded-full border border-orange-200/70 bg-gradient-to-r from-[#fff3eb] to-[#ffedf1] px-3 py-1.5 text-[11px] font-extrabold text-orange-600 shadow-xs tabular-nums">
-          Balance ${user.balance.toFixed(2)}
+          Balance ${liveUser.balance.toFixed(2)}
         </span>
       </header>
 

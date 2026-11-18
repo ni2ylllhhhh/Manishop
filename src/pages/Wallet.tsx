@@ -11,6 +11,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
+import { getWithdrawReferralStatus } from '../lib/store';
 import { openTelegramChat } from '../lib/telegram';
 
 export function Wallet() {
@@ -22,7 +23,8 @@ export function Wallet() {
 
   if (!liveUser) return null;
 
-  const referralsNeeded = Math.max(0, config.minReferralsForWithdraw - liveUser.referralCount);
+  const refStatus = getWithdrawReferralStatus(liveUser, db.withdrawals, config);
+  const referralsNeeded = refStatus.needed;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayActionsCount = db.logs.filter(

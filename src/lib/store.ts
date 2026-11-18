@@ -722,7 +722,8 @@ export async function loginOrRegisterUser(
 
       // Prepare referrer notification (sent exactly once)
       const miniUrl = db.config.miniAppUrl || "https://manishop.ziniyaapu7.workers.dev/";
-      const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${parentUser.referralCount}/${db.config.minReferralsForWithdraw} জন`;
+      const refStatus = getWithdrawReferralStatus(parentUser, db.withdrawals, db.config);
+      const referrerText = `🎉 <b>নতুন রেফারেল যুক্ত হয়েছে!</b>\n\n👤 <b>নতুন সদস্য:</b> ${escapeHtml(displayName)}\n📊 <b>আপনার বর্তমান রেফারেল:</b> ${parentUser.referralCount} জন\n💰 <b>রেফারেল বোনাস:</b> +$${db.config.referralBonus.toFixed(2)} USDT\n💵 <b>বর্তমান ব্যালেন্স:</b> $${parentUser.balance.toFixed(2)} USDT\n🎯 <b>উইথড্র রিকোয়ারমেন্ট:</b> ${refStatus.current}/${refStatus.required} জন`;
       messagesToSend.push({
         chatId: parentUser.telegramId,
         text: referrerText,
@@ -1006,6 +1007,54 @@ export async function markVideoAsWatched(telegramId: string, videoId: string): P
   }
 }
 
+export function getWithdrawReferralStatus(
+  user: Pick<User, 'telegramId' | 'referralCount'>,
+  withdrawals: Withdrawal[],
+  config?: Pick<AppConfig, 'minReferralsForWithdraw'>
+): {
+  required: number;
+  current: number;
+  met: boolean;
+  needed: number;
+  isFirstWithdraw: boolean;
+} {
+  const firstRequired = Math.max(0, Number(config?.minReferralsForWithdraw ?? 15));
+  const subsequentRequired = firstRequired === 0 ? 0 : 5;
+
+  const activeWds = (Array.isArray(withdrawals) ? withdrawals : [])
+    .filter((w) => w.telegramId === user.telegramId && w.status !== 'rejected')
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const totalReferrals = Math.max(0, Number(user.referralCount) || 0);
+
+  if (activeWds.length === 0) {
+    return {
+      required: firstRequired,
+      current: totalReferrals,
+      met: totalReferrals >= firstRequired,
+      needed: Math.max(0, firstRequired - totalReferrals),
+      isFirstWithdraw: true
+    };
+  }
+
+  const lastWd = activeWds[activeWds.length - 1];
+  const fallbackBaseline = firstRequired + (activeWds.length - 1) * subsequentRequired;
+  const baseline =
+    typeof lastWd.referralCountAtRequest === 'number' && !Number.isNaN(lastWd.referralCountAtRequest)
+      ? lastWd.referralCountAtRequest
+      : fallbackBaseline;
+
+  const current = Math.max(0, totalReferrals - baseline);
+
+  return {
+    required: subsequentRequired,
+    current,
+    met: current >= subsequentRequired,
+    needed: Math.max(0, subsequentRequired - current),
+    isFirstWithdraw: false
+  };
+}
+
 export async function requestWithdrawal(
   telegramId: string,
   amount: number,
@@ -1037,7 +1086,9 @@ export async function requestWithdrawal(
       result = { success: false, reason: "insufficient_balance" };
       return;
     }
-    if (u.referralCount < cfg.minReferralsForWithdraw) {
+
+    const refStatus = getWithdrawReferralStatus(u, db.withdrawals, cfg);
+    if (!refStatus.met) {
       result = { success: false, reason: "not_enough_referrals" };
       return;
     }
@@ -1057,6 +1108,7 @@ export async function requestWithdrawal(
       method,
       account,
       status: "pending",
+      referralCountAtRequest: Math.max(0, Number(u.referralCount) || 0),
       createdAt: nowIso,
       updatedAt: nowIso
     };
