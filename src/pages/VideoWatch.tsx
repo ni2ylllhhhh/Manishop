@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth, useAppStore } from '../contexts/AuthContext';
 import { creditUserEarning, getTodayDateString, isVideoWatchedByUser, markVideoAsWatched } from '../lib/store';
-import { extractYouTubeId, getYouTubeEmbedUrl, getYouTubeThumbnail } from '../lib/youtube';
+import { extractYouTubeId, getYouTubeEmbedUrl, getYouTubeThumbnail, sortVideosNewestFirst } from '../lib/youtube';
 import { triggerHaptic } from '../lib/telegram';
 import { formatUsd } from '../lib/format';
 import { AdsterraBanner } from '../components/AdsterraBanner';
@@ -37,12 +37,12 @@ export function VideoWatch() {
   const videoSectionRef = useRef<HTMLDivElement>(null);
   const videoIframeRef = useRef<HTMLIFrameElement>(null);
 
+  const claimedInThisSessionRef = useRef<string | null>(null);
+
   const liveUser = (user?.telegramId && db.users[user.telegramId]) ? db.users[user.telegramId] : user;
 
   const videos = useMemo(() => {
-    const list = Array.isArray(config.videos) ? [...config.videos] : [];
-    list.sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
-    return list;
+    return sortVideosNewestFirst(Array.isArray(config.videos) ? config.videos : []);
   }, [config.videos]);
 
   const currentIndex = videos.findIndex((v) => v.id === videoId);
@@ -209,14 +209,38 @@ export function VideoWatch() {
     };
   }, [videoId, currentVideo?.id]);
 
-  // Sync already claimed status and check if video is already completed
+  // Reset session claim state cleanly when switching to another video
   useEffect(() => {
-    if (!liveUser || !currentVideo || justClaimed) return;
+    claimedInThisSessionRef.current = null;
+    setJustClaimed(false);
+    setShowExitConfirm(false);
+
+    const watchedNow = liveUser && currentVideo ? isVideoWatchedByUser(liveUser.telegramId, currentVideo.id) : false;
+    let claimedLocal = false;
+    if (storageKey) {
+      try {
+        claimedLocal = localStorage.getItem(storageKey) === '1';
+      } catch {}
+    }
+
+    if (watchedNow || claimedLocal) {
+      setAlreadyClaimed(true);
+      setSecondsElapsed(targetSeconds);
+    } else {
+      setAlreadyClaimed(false);
+      setSecondsElapsed(getSavedProgress());
+    }
+  }, [currentVideo?.id]);
+
+  // Sync already claimed status ONLY when opening an already-watched video directly (never kick out mid-session)
+  useEffect(() => {
+    if (!liveUser || !currentVideo) return;
+    if (justClaimed || claimedInThisSessionRef.current === currentVideo.id) return;
+
     const isWatched = isVideoWatchedByUser(liveUser.telegramId, currentVideo.id);
     if (isWatched) {
       setAlreadyClaimed(true);
       setSecondsElapsed(targetSeconds);
-      // Auto forward to next unwatched video only if directly opening an old already-watched video
       const nextUnwatched = videos.find((v) => !isVideoWatchedByUser(liveUser.telegramId, v.id));
       if (nextUnwatched && nextUnwatched.id !== currentVideo.id) {
         toast.info('এই ভিডিওটি আগে দেখা হয়েছে। নতুন ভিডিও লোড করা হচ্ছে...', { duration: 2500 });
@@ -231,19 +255,12 @@ export function VideoWatch() {
     if (!storageKey) return;
     try {
       const isClaimed = localStorage.getItem(storageKey) === '1';
-      setAlreadyClaimed(isClaimed);
-      setJustClaimed(false);
-      setSecondsElapsed((prev) => {
-        if (isClaimed) return targetSeconds;
-        if (prev > 0) return prev;
-        const saved = getSavedProgress();
-        return saved > 0 ? saved : 0;
-      });
-      setShowExitConfirm(false);
-    } catch {
-      setAlreadyClaimed(false);
-    }
-  }, [storageKey, targetSeconds, liveUser?.telegramId, currentVideo?.id, videos, navigate]);
+      if (isClaimed) {
+        setAlreadyClaimed(true);
+        setSecondsElapsed(targetSeconds);
+      }
+    } catch {}
+  }, [storageKey, targetSeconds, liveUser?.telegramId, currentVideo?.id, videos, navigate, justClaimed]);
 
   // Video timer: counts elapsed seconds strictly while active on video page
   useEffect(() => {
@@ -303,12 +320,27 @@ export function VideoWatch() {
     };
   }, [config.videoBannerAds?.popunderUrl, config.videoBannerAds?.popunderEnabled]);
 
-  // Smart Cyclical Ad-Touring Auto-Scroll (Initial entry, then every 60 seconds)
+  // Smart Cyclical Ad-Touring Auto-Scroll (Runs ONLY while countdown timer is active; stops permanently once timer completes)
   useEffect(() => {
-    let animId: number;
+    let animId = 0;
     let isDisposed = false;
+    const stepTimeouts: number[] = [];
 
-    // Smooth scroll helper using requestAnimationFrame
+    const scheduleTimeout = (fn: () => void, ms: number) => {
+      const id = window.setTimeout(fn, ms);
+      stepTimeouts.push(id);
+      return id;
+    };
+
+    const getVideoY = () => {
+      if (!videoSectionRef.current) return 0;
+      return Math.max(0, videoSectionRef.current.offsetTop - 56);
+    };
+
+    const getBottomY = () => {
+      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    };
+
     const smoothScrollTo = (targetY: number, duration: number, callback?: () => void) => {
       if (isDisposed) return;
       const startY = window.scrollY || window.pageYOffset || 0;
@@ -323,7 +355,6 @@ export function VideoWatch() {
         if (isDisposed) return;
         const elapsed = now - startTime;
         const progress = Math.min(1, elapsed / duration);
-        // Smooth easeInOutQuad easing
         const ease =
           progress < 0.5
             ? 2 * progress * progress
@@ -340,56 +371,56 @@ export function VideoWatch() {
       animId = requestAnimationFrame(step);
     };
 
-    const getVideoY = () => {
-      if (!videoSectionRef.current) return 0;
-      return Math.max(0, videoSectionRef.current.offsetTop - 56);
-    };
-
-    const getBottomY = () => {
-      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    };
+    // Once timer is finished (reward claimed), STOP all cyclical scrolling.
+    // If the timer happened to finish mid-tour away from the video, smoothly settle onto the video player once and stay still.
+    if (alreadyClaimed || justClaimed) {
+      const videoY = getVideoY();
+      const currentY = window.scrollY || window.pageYOffset || 0;
+      if (Math.abs(currentY - videoY) > 80) {
+        smoothScrollTo(videoY, 900);
+      }
+      return () => {
+        isDisposed = true;
+        stepTimeouts.forEach((id) => clearTimeout(id));
+        if (animId) cancelAnimationFrame(animId);
+      };
+    }
 
     // 1. Initial Flow: pause 800ms at top so user sees top ads, then smoothly glide to video player
-    const initialTimer = setTimeout(() => {
+    scheduleTimeout(() => {
       if (isDisposed) return;
       smoothScrollTo(getVideoY(), 3800);
     }, 800);
 
-    // 2. Periodic 60-Second Cycle: Tour bottom ads -> top ads -> return to video player
-    const cycleInterval = setInterval(() => {
-      if (isDisposed || !isPageActive || alreadyClaimed) return;
+    // 2. Periodic 60-Second Cycle while timer is running: Tour bottom ads -> top ads -> return to video player
+    const cycleInterval = window.setInterval(() => {
+      if (isDisposed || !isPageActive) return;
 
-      // Step A: Smoothly scroll down to bottom ads to register impressions
       smoothScrollTo(getBottomY(), 2800, () => {
         if (isDisposed) return;
 
-        // Step B: Stay at bottom ads for 4.5 seconds
-        setTimeout(() => {
+        scheduleTimeout(() => {
           if (isDisposed) return;
 
-          // Step C: Smoothly scroll up to top ads
           smoothScrollTo(0, 2800, () => {
             if (isDisposed) return;
 
-            // Step D: Stay at top ads for 3.5 seconds
-            setTimeout(() => {
+            scheduleTimeout(() => {
               if (isDisposed) return;
-
-              // Step E: Smoothly glide back to the video player to continue watching!
               smoothScrollTo(getVideoY(), 2600);
             }, 3500);
           });
         }, 4500);
       });
-    }, 60000); // Triggers every 60 seconds (1 minute)
+    }, 60000);
 
     return () => {
       isDisposed = true;
-      clearTimeout(initialTimer);
       clearInterval(cycleInterval);
+      stepTimeouts.forEach((id) => clearTimeout(id));
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [videoId, alreadyClaimed, isPageActive]);
+  }, [videoId, alreadyClaimed, justClaimed, isPageActive]);
 
   const canClaim = secondsElapsed >= targetSeconds && !alreadyClaimed && !justClaimed;
   const remainingSeconds = Math.max(0, targetSeconds - secondsElapsed);
@@ -410,6 +441,12 @@ export function VideoWatch() {
 
   const handleClaimReward = async () => {
     if (!liveUser || !currentVideo || alreadyClaimed || justClaimed || isClaiming) return;
+    if (claimedInThisSessionRef.current === currentVideo.id) return;
+
+    // Lock synchronously before async calls so Firebase updates never trigger an early exit redirect
+    claimedInThisSessionRef.current = currentVideo.id;
+    setJustClaimed(true);
+    setAlreadyClaimed(true);
     setIsClaiming(true);
     triggerHaptic('success');
 
@@ -435,8 +472,6 @@ export function VideoWatch() {
         }
       } catch {}
 
-      setAlreadyClaimed(true);
-      setJustClaimed(true);
       triggerHaptic('success');
       toast.success(`🎉 অভিনন্দন! +$${reward.toFixed(2)} USDT সরাসরি আপনার ব্যালেন্সে যোগ হয়েছে!`, {
         duration: 5000
@@ -445,6 +480,9 @@ export function VideoWatch() {
       // Once they click back to exit, this video will not appear on their Home page anymore.
     } catch (err) {
       console.error(err);
+      claimedInThisSessionRef.current = null;
+      setJustClaimed(false);
+      setAlreadyClaimed(false);
       toast.error('রিওয়ার্ড যোগ করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।');
     } finally {
       setIsClaiming(false);
