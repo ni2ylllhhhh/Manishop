@@ -8,6 +8,7 @@ import { maskUid, formatDate } from '../lib/format';
 import { triggerHaptic, openTelegramChat } from '../lib/telegram';
 import { BrandTopHeader } from '../components/BrandTopHeader';
 import referInviteBanner from '../assets/images/refer_invite_banner.jpg';
+import referGuideBanner from '../assets/images/refer_guide_banner.jpg';
 
 export function Refer() {
   const { user, config } = useAuth();
@@ -148,18 +149,17 @@ export function Refer() {
           />
         </div>
 
-        {activeTab === 'overview' ? (
-          <div className="p-2.5">
-            <img
-              src="/refer-banner.webp"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "https://i.ibb.co/B5mTVMwy/Share.webp";
-              }}
-              alt="Referral Rules & Guide"
-              className="w-full h-auto rounded-xl object-contain shadow-sm"
-            />
-          </div>
-        ) : (
+        <div className={activeTab === 'overview' ? 'block p-2.5' : 'hidden'}>
+          <img
+            src={referGuideBanner}
+            alt="Referral Rules & Guide"
+            loading="eager"
+            decoding="sync"
+            className="w-full h-auto rounded-xl object-contain shadow-sm"
+          />
+        </div>
+
+        {activeTab !== 'overview' && (
           <ul className="divide-y divide-black/5">
             {currentList.length === 0 && (
               <li className="px-3 py-6 text-center text-[11px] text-gray-400">

@@ -19,6 +19,7 @@ import { Tasks } from './pages/Tasks';
 import { TaskDetails } from './pages/TaskDetails';
 import { TaskHistory } from './pages/TaskHistory';
 import referInviteBanner from './assets/images/refer_invite_banner.jpg';
+import referGuideBanner from './assets/images/refer_guide_banner.jpg';
 import smartEarningLogo from './assets/images/smart_earning_logo.png';
 import taskCenterLogo from './assets/images/task_center_logo.webp';
 
@@ -61,9 +62,10 @@ function AdminAutoRedirect() {
 
 export default function App() {
   useEffect(() => {
-    [referInviteBanner, smartEarningLogo, taskCenterLogo].forEach((src) => {
+    [referInviteBanner, referGuideBanner, smartEarningLogo, taskCenterLogo].forEach((src) => {
       const img = new Image();
       img.src = src;
+      img.decode?.().catch(() => {});
     });
   }, []);
 

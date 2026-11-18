@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Check, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,18 +56,81 @@ export function CashOut() {
   const [selectedAmount, setSelectedAmount] = useState<number>(config.withdrawAmounts[0] ?? 5);
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const accountInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!user) return null;
 
   const currentMethod = METHODS.find((m) => m.id === selectedMethod) || METHODS[0];
+  const cleanAccount = accountNumber.trim();
+  const normalizedMobile = cleanAccount.replace(/[\s-]/g, '');
+  const isMobileMethod = selectedMethod === 'bKash' || selectedMethod === 'Nagad';
+
   const hasEnoughBalance = user.balance >= selectedAmount;
   const hasEnoughReferrals = user.referralCount >= config.minReferralsForWithdraw;
-  const canSubmit = hasEnoughBalance && hasEnoughReferrals && accountNumber.trim().length >= 4 && !submitting;
+  const isValidAccount = isMobileMethod ? /^01\d{9}$/.test(normalizedMobile) : cleanAccount.length >= 4;
+
+  const accountRequirementText =
+    selectedMethod === 'bKash'
+      ? 'সঠিক বিকাশ নাম্বার প্রদান করুন (১১ ডিজিট)'
+      : selectedMethod === 'Nagad'
+        ? 'সঠিক নগদ নাম্বার প্রদান করুন (১১ ডিজিট)'
+        : 'সঠিক Binance ID / Address প্রদান করুন';
+
+  const requirements = [
+    {
+      id: 'balance',
+      met: hasEnoughBalance,
+      label: `সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT (আপনার ব্যালেন্স $${user.balance.toFixed(2)})`
+    },
+    {
+      id: 'referrals',
+      met: hasEnoughReferrals,
+      label: `নূন্যতম ${config.minReferralsForWithdraw} জন রেফার প্রয়োজন (আপনার রেফার: ${user.referralCount}/${config.minReferralsForWithdraw} জন)`
+    },
+    {
+      id: 'account',
+      met: isValidAccount,
+      label: accountRequirementText
+    }
+  ];
 
   const bdtAmount = selectedAmount * 120;
 
   const handleCashOut = async () => {
-    if (!canSubmit) return;
+    if (submitting) return;
+
+    const missingMessages: string[] = [];
+    if (!hasEnoughBalance) {
+      missingMessages.push(`সর্বনিম্ন $${selectedAmount.toFixed(2)} USDT ব্যালেন্স প্রয়োজন (আপনার ব্যালেন্স $${user.balance.toFixed(2)})`);
+    }
+    if (!hasEnoughReferrals) {
+      missingMessages.push(`নূন্যতম ${config.minReferralsForWithdraw} জন রেফার প্রয়োজন (আপনার রেফার: ${user.referralCount}/${config.minReferralsForWithdraw} জন)`);
+    }
+    if (!isValidAccount) {
+      missingMessages.push(accountRequirementText);
+    }
+
+    if (missingMessages.length > 0) {
+      triggerHaptic("error");
+      if (missingMessages.length === 1) {
+        toast.error(missingMessages[0]);
+      } else {
+        toast.error("উইথড্র করার আগে নিচের শর্তগুলো পূরণ করুন:", {
+          description: (
+            <ul className="mt-1 space-y-0.5 text-[12px]">
+              {missingMessages.map((msg, idx) => (
+                <li key={idx}>• {msg}</li>
+              ))}
+            </ul>
+          )
+        });
+      }
+      if (hasEnoughBalance && hasEnoughReferrals && !isValidAccount) {
+        accountInputRef.current?.focus();
+      }
+      return;
+    }
+
     setSubmitting(true);
     triggerHaptic("medium");
 
@@ -98,7 +161,7 @@ export function CashOut() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 px-3 pt-3 pb-10 text-ink">
+    <main className="min-h-screen bg-gray-50 px-3 pt-3 pb-24 text-ink">
       {/* Header */}
       <header className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -227,6 +290,7 @@ export function CashOut() {
               className="mr-3 h-5 w-5 shrink-0 rounded object-contain"
             />
             <input
+              ref={accountInputRef}
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder={currentMethod.placeholder}
@@ -236,28 +300,42 @@ export function CashOut() {
         </div>
       </section>
 
-      {/* Confirmation & Submit Action */}
+      {/* Requirements Checklist */}
       <section className="mt-3 rounded-2xl border border-black/5 bg-white p-4 shadow-card">
-        {!hasEnoughBalance && (
-          <p className="mb-2.5 rounded-2xl border border-rose-200 bg-rose-50 py-2.5 text-center text-[12px] font-bold text-rose-600">
-            ⚠️ আপনার একাউন্টে পর্যাপ্ত ব্যালেন্স নেই!
-          </p>
-        )}
+        <ul className="space-y-3">
+          {requirements.map((item) => (
+            <li key={item.id} className="flex items-start gap-2.5">
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${
+                  item.met
+                    ? "bg-emerald-500 text-white shadow-xs shadow-emerald-500/30"
+                    : "bg-gray-300 text-white"
+                }`}
+              >
+                <Check className="h-3 w-3 stroke-[3]" />
+              </span>
+              <span
+                className={`text-[13px] font-semibold leading-snug transition-colors duration-200 ${
+                  item.met ? "text-emerald-600" : "text-gray-500"
+                }`}
+              >
+                {item.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        {!hasEnoughReferrals && (
-          <p className="mb-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-[12px] font-bold leading-relaxed text-amber-700">
-            ⚠️ নূন্যতম {config.minReferralsForWithdraw} জন রেফার ছাড়া withdraw করা যাবে না (আপনার রেফার: {user.referralCount} জন)
-          </p>
-        )}
-
+      {/* Cash Out Button & Terms */}
+      <section className="mt-3.5">
         <button
           type="button"
-          disabled={!canSubmit}
+          disabled={submitting}
           onClick={handleCashOut}
-          className={`flex h-12 w-full items-center justify-center gap-2 rounded-full text-[15px] font-extrabold transition-all shadow-md ${
-            canSubmit
-              ? "bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-orange-500/20 hover:opacity-95 active:scale-98 cursor-pointer"
-              : "bg-gray-200 text-gray-400 shadow-none cursor-not-allowed"
+          className={`flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-[15px] font-extrabold text-white shadow-md shadow-orange-500/20 transition-all ${
+            submitting
+              ? "opacity-80 cursor-wait"
+              : "hover:opacity-95 active:scale-98 cursor-pointer"
           }`}
         >
           {submitting ? (
